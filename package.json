@@ -24,12 +24,13 @@
   "bugs": {
     "url": "https://github.com/Poolminer/BJSPM/issues"
   },
-  "homepage": "https://github.com/Poolminer/BJSPM#readme",
+  "homepage": "https://bjspm.croncle.com/",
   "dependencies": {
     "appdata-path": "^1.0.0",
+    "archiver": "^3.1.1",
+    "minimatch": "^3.0.4",
     "request": "^2.88.0",
-    "tmp": "^0.1.0",
-    "zip-a-folder": "0.0.10"
+    "tmp": "^0.1.0"
   },
   "devDependencies": {}
 }
