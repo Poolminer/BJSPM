@@ -242,15 +242,18 @@ function zipPackage(callback) {
 			archive.pipe(output);
 
 			let entries = getDirectoryEntries('.');
-			outer:
 			for (let entry of entries) {
+				let skip = false;
 				for(let ignoreGlob of ignoreGlobs){
 					if(ignoreGlob.match(entry.path)){
-						console.log(`Skipping file "${ entry.path }"`);
-						continue outer;
+						skip = ignoreGlob.negate;
 					}
 				}
-				archive.file("./" + entry.path, { name: entry.path });
+				if(skip){
+					console.log(`Skipping file "${ entry.path }"`);
+				} else {
+					archive.file("./" + entry.path, { name: entry.path });
+				}
 			}
 			archive.finalize();
 			callback(zipPath);
@@ -327,7 +330,7 @@ function loadIgnores(callback) {
 
 				let _ignoreGlobs = [];
 				for(let ignoreGlob of _ignores){
-					_ignoreGlobs.push(new Minimatch(ignoreGlob));
+					_ignoreGlobs.push(new Minimatch(ignoreGlob, { flipNegate: true }));
 				}
 				ignoreGlobs = defaultIgnoreGlobs.concat(_ignoreGlobs);
 				callback();
