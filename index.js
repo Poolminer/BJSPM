@@ -15,7 +15,12 @@ const path = require('path');
 const cwdPath = process.cwd() + path.sep;
 const bjspmPath = process.cwd() + path.sep + 'bjspm' + path.sep;
 const packagesPath = bjspmPath + 'packages' + path.sep;
+const webPackagesPath = 'https://bjspm.croncle.com/package/';
 const packageJsonPath = bjspmPath + 'package.json';
+const regexUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}(?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
+const regexInstallUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}@.*$/;
+const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}_[A-F0-9]{1,7}$/;
+const regexUnnamed = /^[A-F0-9]{1,7}$/;
 const ignoresPaths = [
 	bjspmPath + 'ignore.txt',
 	cwdPath + '.gitignore',
@@ -170,6 +175,33 @@ loadPackage(() => {
 						});
 					});
 					break;
+					case 'i':
+					case 'install':
+						if(cmdArgs.length === 1){
+
+						} else if(cmdArgs.length === 2){
+							let packageId = cmdArgs[1];
+							if(isValidPackageInstallId(packageId)){
+								if(packageId.indexOf('@') !== -1){
+									let parts1 = packageId.split('@');
+									let parts2 = parts1[1].split('/');
+									let user = parts2[0];
+									let packageName = parts2[1];
+									if(parts1.length === 2){
+										console.log(user, packageName);
+									} else {
+										let version = parts1[2];
+										console.log(user, packageName, version);
+									}
+								}
+							} else {
+								console.log('Invalid package identifier');
+								process.exit();
+							}
+						} else {
+							showCommandHelp('install');
+						}
+						break;
 				default:
 					showQuickHelp();
 			}
@@ -225,11 +257,9 @@ function getServerConfig(callback) {
 	});
 }
 
-function getPackageVersions(callback) {
-	request.post({
-		url: 'https://bjspm.croncle.com/api.php', formData: {
-			action: 'GET_CONFIG'
-		}
+function getPackageVersions(packageId) {
+	request.get({
+		url: webPackagesPath + packageId
 	}, (err, httpResponse, body) => {
 		if (err) {
 			console.log(panickMsg, err);
@@ -237,10 +267,6 @@ function getPackageVersions(callback) {
 		}
 		try {
 			let obj = JSON.parse(body);
-			if (obj.error) {
-				console.log('Server configuration error');
-				process.exit();
-			}
 			callback(obj);
 		} catch (e) {
 			console.log(body);
@@ -289,6 +315,20 @@ function isValidUsername(name) {
 
 function isValidPackageName(name) {
 	return isString(name) && /^[a-z0-9][a-z0-9_\-\.]{0,240}$/.test(name);
+}
+
+function isValidPackageId(id){
+	if(!isString(id)){
+		return false;
+	}
+	return regexUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
+}
+
+function isValidPackageInstallId(id){
+	if(!isString(id)){
+		return false;
+	}
+	return regexInstallUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
 }
 
 function isValidPackageVersion(version) {
@@ -396,18 +436,6 @@ function getPackageType() {
 		return 'unnamed';
 	}
 }
-
-// function getDependencyTree(package, callback){
-// 	let tree = [];
-// 	for(let dependency in package.dependencies){
-// 		let path = packagesPath + dependency.name;
-// 		let entry = {
-// 			installed: fs.existsSync(entry.path),
-// 			path: path,
-// 			dependencies: 
-// 		};
-// 	}
-// }
 
 function loadPackage(callback) {
 	if (fs.existsSync(packageJsonPath)) {
