@@ -5,11 +5,16 @@ const archiver = require('archiver');
 const tmp = require('tmp');
 const request = require('request');
 const getAppDataPath = require("appdata-path");
+const download = require('download-to-file');
+const extract = require('extract-zip');
+const mkdirp = require('mkdirp');
 const readline = require('readline').createInterface({
 	input: process.stdin,
 	output: process.stdout
 });
 const Minimatch = require('minimatch').Minimatch;
+const semverValid = require('semver/functions/valid');
+const semverMaxSatisfying = require('semver/ranges/max-satisfying');
 const semver2Regex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 const path = require('path');
 const cwdPath = process.cwd() + path.sep;
@@ -21,11 +26,13 @@ const regexUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}(?:@(0|[1-9]\d
 const regexInstallUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}@.*$/;
 const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}_[A-F0-9]{1,7}$/;
 const regexUnnamed = /^[A-F0-9]{1,7}$/;
+const regexSubfolder = /^[a-zA-Z0-9\-\.]{1,255}$/;
 const ignoresPaths = [
 	bjspmPath + 'ignore.txt',
 	cwdPath + '.gitignore',
 ];
 const appDataPath = getAppDataPath('BJSPM');
+const appDataTmpPath = appDataPath + path.sep + 'tmp' + path.sep;
 const authTokenStore = appDataPath + path.sep + 'authTokenStore.json';
 const API_STATUS = {
 	OK: 1,
@@ -46,6 +53,9 @@ let ignoreGlobs = [];
 
 if (!fs.existsSync(appDataPath)) {
 	fs.mkdirSync(appDataPath);
+}
+if (!fs.existsSync(appDataTmpPath)) {
+	fs.mkdirSync(appDataTmpPath);
 }
 
 let authTokens = {};
@@ -96,27 +106,46 @@ loadPackage(() => {
 					getServerConfig((serverConfig) => {
 						zipPackage((zipPath) => {
 							let uploadType = getPackageType();
-							if (cmdArgs[1] !== undefined) {
-								switch (cmdArgs[1].toLocaleLowerCase()) {
-									case 'user':
-										if (package.username.length === 0) {
-											console.log('This package is not configured properly to be a user package; run "bjspm init" to fix this.');
-											process.exit();
-										} else {
-											uploadType = 'user';
-										}
-										break;
-									case 'named':
-										if (package.name.length === 0) {
-											console.log('This package is not configured properly to be a named package; run "bjspm init" to fix this.');
-											process.exit();
-										} else {
-											uploadType = 'named';
-										}
-										break;
-									case 'unnamed':
-										uploadType = 'unnamed';
-										break;
+							let tag = '';
+							for (let i = 1; i < cmdArgs.length; i += 2) {
+								if (cmdArgs[i] !== undefined) {
+									switch (cmdArgs[i].toLowerCase()) {
+										case '--type':
+											if (cmdArgs[i + 1] !== undefined) {
+												switch (cmdArgs[i + 1].toLowerCase()) {
+													case 'user':
+														if (package.username.length === 0) {
+															console.log('This package is not configured properly to be a user package; run "bjspm init" to fix this.');
+															process.exit();
+														}
+														uploadType = 'user';
+														break;
+													case 'named':
+														if (package.name.length === 0) {
+															console.log('This package is not configured properly to be a named package; run "bjspm init" to fix this.');
+															process.exit();
+														} else {
+															uploadType = 'named';
+														}
+														break;
+													case 'unnamed':
+														uploadType = 'unnamed';
+														break;
+												}
+											}
+											break;
+										case '--tag':
+											if (uploadType === 'user') {
+												if (cmdArgs[i + 1] !== undefined) {
+													tag = cmdArgs[i + 1];
+													if (!isValidPackageTag(tag)) {
+														console.log('Invalid package tag');
+														process.exit();
+													}
+												}
+											}
+											break;
+									}
 								}
 							}
 							let uploadCallback = (err, httpResponse, body) => {
@@ -136,7 +165,7 @@ loadPackage(() => {
 											if (obj.error === 'Authentication failed') {
 												authTokens[package.username] = undefined;
 												getAuthToken(package.username, (authToken) => {
-													uploadPackage(zipPath, authToken, uploadType, uploadCallback);
+													uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
 												});
 											} else {
 												console.log('Server error: ' + obj.error);
@@ -152,16 +181,34 @@ loadPackage(() => {
 								cleanupCallback();
 							};
 							if (uploadType === 'user') {
-								getAuthToken(package.username, (authToken) => {
-									uploadPackage(zipPath, authToken, uploadType, uploadCallback);
-								});
+								let authToken = authTokens[package.username];
+								if (authToken !== undefined) {
+									uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
+								} else {
+									console.log('Please enter your croncle.com account credentials to continue.');
+									let pollUsername = function () {
+										readline.question(`Username: (${package.username})`, (username) => {
+											if(username.length === 0){
+												username = package.username;
+											}
+											if (isValidUsername(username)) {
+												getAuthToken(username, (authToken) => {
+													uploadPackage(zipPath, authToken, uploadType, uploadCallback);
+												});
+											} else {
+												pollUsername();
+											}
+										});
+									}
+									pollUsername();
+								}
 							} else if (serverConfig.loginRequired) {
-								console.log('Please log in with your croncle.com account to continue.');
+								console.log('Please enter your croncle.com account credentials to continue.');
 								let pollUsername = function () {
 									readline.question(`Username: `, (username) => {
 										if (isValidUsername(username)) {
 											getAuthToken(username, (authToken) => {
-												uploadPackage(zipPath, authToken, uploadType, uploadCallback);
+												uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
 											});
 										} else {
 											pollUsername();
@@ -175,33 +222,62 @@ loadPackage(() => {
 						});
 					});
 					break;
-					case 'i':
-					case 'install':
-						if(cmdArgs.length === 1){
-
-						} else if(cmdArgs.length === 2){
-							let packageId = cmdArgs[1];
-							if(isValidPackageInstallId(packageId)){
-								if(packageId.indexOf('@') !== -1){
-									let parts1 = packageId.split('@');
-									let parts2 = parts1[1].split('/');
-									let user = parts2[0];
-									let packageName = parts2[1];
-									if(parts1.length === 2){
-										console.log(user, packageName);
-									} else {
-										let version = parts1[2];
-										console.log(user, packageName, version);
-									}
-								}
+				case 'i':
+				case 'install':
+					if (cmdArgs.length === 1) {
+						let packageId = cmdArgs[1];
+						if (!isValidPackageInstallId(packageId)) {
+							console.log('Invalid package identifier');
+							process.exit();
+						}
+						console.log('Downloading');
+						downloadPackage(packageId, '', (filepath) => {
+							console.log(filepath);
+						});
+					} else if (cmdArgs.length === 2 || cmdArgs.length === 3) {
+						let packageId = cmdArgs[1];
+						let subfolder = cmdArgs.length === 3 ? cmdArgs[2] : '';
+						console.log(subfolder);
+						if (subfolder.length !== 0 && !isValidSubfolder(subfolder)) {
+							console.log('Invalid subfolder name, only alphanumeric characters, dashes and dots are allowed.');
+							process.exit();
+						}
+						if (!isValidPackageInstallId(packageId)) {
+							console.log('Invalid package identifier');
+							process.exit();
+						}
+						let downloadId = null;
+						if (packageId.indexOf('@') !== -1) {
+							let parts1 = packageId.split('@');
+							let parts2 = parts1[1].split('/');
+							let user = parts2[0];
+							let packageName = parts2[1];
+							if (parts1.length === 2) {
+								downloadId = packageId;
 							} else {
-								console.log('Invalid package identifier');
-								process.exit();
+								let version = parts1[2];
+								getPackageVersions(packageName, (versions) => {
+									let highestMatch = semverMaxSatisfying(versions, version);
+									if (highestMatch === null) {
+										process.exit();
+									}
+									downloadId = `@${user}/${packageName}@${highestMatch}`;
+								});
 							}
 						} else {
-							showCommandHelp('install');
+							downloadId = packageId;
 						}
-						break;
+						downloadPackage(downloadId, subfolder, (filepath) => {
+							console.log(filepath);
+						});
+					} else {
+						showCommandHelp('install');
+					}
+					break;
+				case 'semver':
+					console.log(semverMaxSatisfying(['1.0.0', '1.0.0-alpha', '1.0.1', '1.1.0', '1.5.0', '2.0.1', '2.0.5'], cmdArgs[1]));
+					process.exit();
+					break;
 				default:
 					showQuickHelp();
 			}
@@ -257,7 +333,42 @@ function getServerConfig(callback) {
 	});
 }
 
-function getPackageVersions(packageId) {
+function downloadPackage(packageId, subfolder, callback) {
+	let url = webPackagesPath + packageId + '?download';
+	let zipPath = appDataTmpPath + packageId + '.zip';
+	let targetPath = packagesPath;
+	if (subfolder.length !== 0) {
+		targetPath += subfolder + path.sep;
+	}
+	targetPath += packageId + path.sep;
+	mkdirsSync(targetPath);
+	download(url, zipPath, (err, filepath) => {
+		if (err) {
+			if (!fs.existsSync(zipPath)) {
+				console.log(panickMsg);
+				console.trace();
+				process.exit();
+			}
+		} else {
+			extract(zipPath, { dir: targetPath }).then(() => {
+				fs.unlink(zipPath, function (err) {
+					if (err) {
+						console.log(panickMsg);
+						console.trace();
+						process.exit();
+					}
+					callback(targetPath);
+				});
+			}, (err) => {
+				console.log(panickMsg);
+				console.trace();
+				process.exit();
+			});
+		}
+	});
+}
+
+function getPackageVersions(packageId, callback) {
 	request.get({
 		url: webPackagesPath + packageId
 	}, (err, httpResponse, body) => {
@@ -275,7 +386,7 @@ function getPackageVersions(packageId) {
 	});
 }
 
-function uploadPackage(path, authToken, type, callback) {
+function uploadPackage(path, authToken, type, tag, callback) {
 	console.log('Uploading package...');
 	request.post({
 		url: 'https://bjspm.croncle.com/api.php', formData: {
@@ -287,7 +398,8 @@ function uploadPackage(path, authToken, type, callback) {
 			description: package.description,
 			keywords: package.keywords.join(','),
 			license: package.license,
-			type: type
+			type: type,
+			tag: tag
 		}
 	}, callback);
 }
@@ -305,6 +417,20 @@ function isString(obj) {
 	return typeof obj === 'string';
 }
 
+function isValidSubfolder(name) {
+	if (!isString(name)) {
+		return false;
+	}
+	name = name.replace(/\\+/g, '/').replace(/\/+/g, '/');
+	let parts = name.split('/');
+	for (let part of parts) {
+		if (!regexSubfolder.test(name)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 function isValidLicense(name) {
 	return isString(name) && licences.indexOf(name) !== -1;
 }
@@ -313,19 +439,23 @@ function isValidUsername(name) {
 	return isString(name) && /^[A-Za-z0-9_]{1,16}$/.test(name);
 }
 
+function isValidPackageTag(tag) {
+	return isString(tag) && !semverValid(tag);
+}
+
 function isValidPackageName(name) {
 	return isString(name) && /^[a-z0-9][a-z0-9_\-\.]{0,240}$/.test(name);
 }
 
-function isValidPackageId(id){
-	if(!isString(id)){
+function isValidPackageId(id) {
+	if (!isString(id)) {
 		return false;
 	}
 	return regexUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
 }
 
-function isValidPackageInstallId(id){
-	if(!isString(id)){
+function isValidPackageInstallId(id) {
+	if (!isString(id)) {
 		return false;
 	}
 	return regexInstallUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
@@ -509,7 +639,7 @@ function storeAuthTokens() {
 
 function getAuthToken(username, callback) {
 	if (authTokens[username] === undefined) {
-		readline.question(`Please enter the password for croncle.com user "${username}": `, (password) => {
+		readline.question(`Please enter the password for croncle.com account "${username}": `, (password) => {
 			if (password.length === 0) {
 				getAuthToken(username, callback);
 				return;
@@ -549,6 +679,20 @@ function getAuthToken(username, callback) {
 	}
 }
 
+async function mkdir(path) {
+	return mkdirp(path).then(() => {
+	}, (err) => {
+		console.log(panickMsg, err);
+		process.exit();
+	});
+}
+
+async function mkdirsSync(...paths) {
+	for (let path of paths) {
+		await mkdir(path);
+	}
+}
+
 function initPackage() {
 	console.log(`
 This utility will walk you through creating a package.json file.
@@ -566,9 +710,7 @@ Press ^C at any time to quit.
 		readline.question(`Is this OK? (yes) `, (answer) => {
 			let _answer = answer.toLowerCase();
 			if (['', 'y', 'yes'].indexOf(_answer) !== -1) {
-				if (!fs.existsSync(bjspmPath)) {
-					fs.mkdirSync(bjspmPath);
-				}
+				mkdirsSync(bjspmPath);
 				fs.writeFile(packageJsonPath, json, 'utf8', function (err) {
 					if (err) {
 						console.log(panickMsg, err);
@@ -745,8 +887,8 @@ alias: v
 `);
 		}
 			break;
-			default:
-				showQuickHelp();
+		default:
+			showQuickHelp();
 	}
 	process.exit();
 }
