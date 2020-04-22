@@ -23,6 +23,7 @@ const packagesPath = bjspmPath + 'packages' + path.sep;
 const webPackagesPath = 'https://bjspm.croncle.com/package/';
 const packageJsonPath = bjspmPath + 'package.json';
 const regexUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}(?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
+const regexUserNoVersion = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}$/;
 const regexInstallUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}@.*$/;
 const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}_[A-F0-9]{1,7}$/;
 const regexUnnamed = /^[A-F0-9]{1,7}$/;
@@ -186,38 +187,21 @@ loadPackage(() => {
 									uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
 								} else {
 									console.log('Please enter your croncle.com account credentials to continue.');
-									let pollUsername = function () {
-										readline.question(`Username: (${package.username})`, (username) => {
-											if(username.length === 0){
-												username = package.username;
-											}
-											if (isValidUsername(username)) {
-												getAuthToken(username, (authToken) => {
-													uploadPackage(zipPath, authToken, uploadType, uploadCallback);
-												});
-											} else {
-												pollUsername();
-											}
+									pollUsername((username) => {
+										getAuthToken(username, (authToken) => {
+											uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
 										});
-									}
-									pollUsername();
+									}, package.username);
 								}
 							} else if (serverConfig.loginRequired) {
 								console.log('Please enter your croncle.com account credentials to continue.');
-								let pollUsername = function () {
-									readline.question(`Username: `, (username) => {
-										if (isValidUsername(username)) {
-											getAuthToken(username, (authToken) => {
-												uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
-											});
-										} else {
-											pollUsername();
-										}
+								pollUsername((username) => {
+									getAuthToken(username, (authToken) => {
+										uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
 									});
-								}
-								pollUsername();
+								});
 							} else {
-								uploadPackage(zipPath, '', uploadType, uploadCallback);
+								uploadPackage(zipPath, '', uploadType, tag, uploadCallback);
 							}
 						});
 					});
@@ -274,9 +258,75 @@ loadPackage(() => {
 						showCommandHelp('install');
 					}
 					break;
-				case 'semver':
-					console.log(semverMaxSatisfying(['1.0.0', '1.0.0-alpha', '1.0.1', '1.1.0', '1.5.0', '2.0.1', '2.0.5'], cmdArgs[1]));
-					process.exit();
+				case 'access':
+					if (cmdArgs.length === 1) {
+						showCommandHelp('access');
+					} else {
+						switch (cmdArgs[1]) {
+							case 'public':
+							case 'restricted':
+								let package;
+								let packageType = getPackageType();
+								if (cmdArgs.length === 2) { // local user package
+									if(packageType !== 'user'){
+										console.log('No package specified');
+										break;
+									}
+									package = '@' + package.username + '/' + package.name;
+								} else if(cmdArgs.length === 3){
+									package = cmdArgs[2];
+								} else {
+									showCommandHelp('access');
+									break;
+								}
+								if(isValidPackageBaseId(package)){
+									let authToken;
+									let engage = () => {
+										setPackagePublicity(package, cmdArgs[1], authToken, () => {
+											console.log('Package set to ' + cmdArgs[1]);
+											process.exit();
+										});
+									}
+									if(cmdArgs.length === 2){ // local user package
+										authToken = authTokens[package.username];
+										if (authToken !== undefined) {
+											engage();
+										} else {
+											pollUsername((username) => {
+												getAuthToken(username, (_authToken) => {
+													authToken = _authToken;
+													engage();
+												});
+											}, package.username);
+										}
+									} else {
+										let username = '';
+										if(regexUserNoVersion.test(package)){
+											let regex = /^@([a-z0-9_]{1,16})/;
+											username = regex.exec(package)[1];
+										}
+										pollUsername((username) => {
+											getAuthToken(username, (_authToken) => {
+												authToken = _authToken;
+												engage();
+											});
+										}, username);
+									}
+								} else {
+									console.log('Invalid package identifier');
+									process.exit();
+								}
+								break;
+							case 'set':
+								break;
+							case 'ls-packages':
+								break;
+							case 'ls-collaborators':
+								break;
+							default:
+								showCommandHelp('access');
+						}
+					}
 					break;
 				default:
 					showQuickHelp();
@@ -284,6 +334,47 @@ loadPackage(() => {
 		}
 	});
 });
+
+function pollUsername(callback, defaultOption = ''){
+	let prompt = defaultOption ? `Username: (${defaultOption}) ` : `Username: `;
+	readline.question(prompt, (username) => {
+		if (defaultOption && username.length === 0) {
+			username = defaultOption;
+		}
+		if (isValidUsername(username)) {
+			callback(username);
+		} else {
+			pollUsername(callback, defaultOption);
+		}
+	});
+}
+
+function setPackagePublicity(packageBaseId, publicity, authToken, callback) {
+	request.post({
+		url: 'https://bjspm.croncle.com/api.php', formData: {
+			action: 'SET_PACKAGE_PUBLICITY',
+			authToken: authToken,
+			package: packageBaseId,
+			publicity: publicity
+		}
+	}, (err, httpResponse, body) => {
+		if (err) {
+			console.log(panickMsg, err);
+			process.exit();
+		}
+		try {
+			let obj = JSON.parse(body);
+			if (obj.error) {
+				console.log(obj.error);
+				process.exit();
+			}
+			callback(obj);
+		} catch (e) {
+			console.log(body);
+			process.exit();
+		}
+	});
+}
 
 function requestUID(callback) {
 	request.post({
@@ -452,6 +543,13 @@ function isValidPackageId(id) {
 		return false;
 	}
 	return regexUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
+}
+
+function isValidPackageBaseId(id) {
+	if (!isString(id)) {
+		return false;
+	}
+	return regexUserNoVersion.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
 }
 
 function isValidPackageInstallId(id) {
@@ -639,7 +737,7 @@ function storeAuthTokens() {
 
 function getAuthToken(username, callback) {
 	if (authTokens[username] === undefined) {
-		readline.question(`Please enter the password for croncle.com account "${username}": `, (password) => {
+		readline.question(`Password of "${username}": `, (password) => {
 			if (password.length === 0) {
 				getAuthToken(username, callback);
 				return;
@@ -669,7 +767,7 @@ function getAuthToken(username, callback) {
 							break;
 					}
 				} catch (e) {
-					console.log(body);
+					console.log(e, body);
 					process.exit();
 				}
 			});
