@@ -44,6 +44,7 @@ const licencesLowerCase = ['', '0bsd', 'aal', 'abstyles', 'adobe-2006', 'adobe-g
 const defaultIgnores = ['.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
 const defaultIgnoreGlobs = [];
 const panickMsg = 'Something went wrong!';
+const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
 
 for (let ignoreGlob of defaultIgnores) {
 	defaultIgnoreGlobs.push(new Minimatch(ignoreGlob));
@@ -186,7 +187,7 @@ loadPackage(() => {
 								if (authToken !== undefined) {
 									uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
 								} else {
-									console.log('Please enter your croncle.com account credentials to continue.');
+									console.log(credentialsMsg);
 									pollUsername((username) => {
 										getAuthToken(username, (authToken) => {
 											uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
@@ -194,7 +195,7 @@ loadPackage(() => {
 									}, package.username);
 								}
 							} else if (serverConfig.loginRequired) {
-								console.log('Please enter your croncle.com account credentials to continue.');
+								console.log(credentialsMsg);
 								pollUsername((username) => {
 									getAuthToken(username, (authToken) => {
 										uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
@@ -268,60 +269,118 @@ loadPackage(() => {
 								let package;
 								let packageType = getPackageType();
 								if (cmdArgs.length === 2) { // local user package
-									if(packageType !== 'user'){
+									if (packageType !== 'user') {
 										console.log('No package specified');
+										process.exit();
 										break;
 									}
 									package = '@' + package.username + '/' + package.name;
-								} else if(cmdArgs.length === 3){
+								} else if (cmdArgs.length === 3) {
 									package = cmdArgs[2];
 								} else {
 									showCommandHelp('access');
 									break;
 								}
-								if(isValidPackageBaseId(package)){
-									let authToken;
-									let engage = () => {
-										setPackagePublicity(package, cmdArgs[1], authToken, () => {
-											console.log('Package set to ' + cmdArgs[1]);
-											process.exit();
-										});
-									}
-									if(cmdArgs.length === 2){ // local user package
-										authToken = authTokens[package.username];
-										if (authToken !== undefined) {
-											engage();
-										} else {
-											pollUsername((username) => {
-												getAuthToken(username, (_authToken) => {
-													authToken = _authToken;
-													engage();
-												});
-											}, package.username);
-										}
+								if (!isValidPackageBaseId(package)) {
+									console.log('Invalid package identifier');
+									process.exit();
+								}
+								let authToken;
+								let engage = () => {
+									setPackagePublicity(package, cmdArgs[1], authToken, () => {
+										console.log('Package set to ' + cmdArgs[1]);
+										process.exit();
+									});
+								}
+								if (cmdArgs.length === 2) { // local user package
+									authToken = authTokens[package.username];
+									if (authToken !== undefined) {
+										engage();
 									} else {
-										let username = '';
-										if(regexUserNoVersion.test(package)){
-											let regex = /^@([a-z0-9_]{1,16})/;
-											username = regex.exec(package)[1];
-										}
 										pollUsername((username) => {
 											getAuthToken(username, (_authToken) => {
 												authToken = _authToken;
 												engage();
 											});
-										}, username);
+										}, package.username);
 									}
 								} else {
-									console.log('Invalid package identifier');
-									process.exit();
+									let username = '';
+									if (regexUserNoVersion.test(package)) {
+										let regex = /^@([a-z0-9_]{1,16})/;
+										username = regex.exec(package)[1];
+									}
+									pollUsername((username) => {
+										getAuthToken(username, (_authToken) => {
+											authToken = _authToken;
+											engage();
+										});
+									}, username);
 								}
 								break;
 							case 'set':
+								if (cmdArgs.length === 2) {
+									showCommandHelp('access');
+								} else {
+									switch (cmdArgs[2]) {
+										case 'read-only':
+										case 'read-write':
+											let user = cmdArgs[3];
+											let package;
+											let packageType = getPackageType();
+											if (cmdArgs.length === 4) { // local user package
+												if (packageType !== 'user') {
+													console.log('No package specified');
+													process.exit();
+													break;
+												}
+												package = '@' + package.username + '/' + package.name;
+											} else if (cmdArgs.length === 5) {
+												package = cmdArgs[4];
+											} else {
+												showCommandHelp('access');
+												break;
+											}
+											if (!isValidUsername(user)) {
+												console.log('Invalid username');
+												process.exit();
+											}
+											if (!isValidPackageBaseId(package)) {
+												console.log('Invalid package identifier');
+												process.exit();
+											}
+											console.log(credentialsMsg);
+											pollUsername((username) => {
+												getAuthToken(username, (authToken) => {
+													setUserPermissions(package, user, cmdArgs[2], authToken, () => {
+														console.log('User permissions set');
+														process.exit();
+													});
+												});
+											}, cmdArgs.length === 4 ? package.username : '');
+											break;
+										default:
+											showCommandHelp('access');
+									}
+								}
 								break;
 							case 'ls-packages':
+								if (cmdArgs.length !== 3) {
+									showCommandHelp('ls-packages');
+								}
+								let user = cmdArgs[2];
+								if (!isValidUsername(user)) {
+									console.log('Invalid username');
+									process.exit();
+								}
+								getAccessListForUser(user, (obj) => {
+									let json = JSON.stringify(obj, undefined, 2);
+									console.log(json);
+									process.exit();
+								});
 								break;
 							case 'ls-collaborators':
+
 								break;
 							default:
 								showCommandHelp('access');
@@ -335,7 +394,7 @@ loadPackage(() => {
 	});
 });
 
-function pollUsername(callback, defaultOption = ''){
+function pollUsername(callback, defaultOption = '') {
 	let prompt = defaultOption ? `Username: (${defaultOption}) ` : `Username: `;
 	readline.question(prompt, (username) => {
 		if (defaultOption && username.length === 0) {
@@ -349,15 +408,9 @@ function pollUsername(callback, defaultOption = ''){
 	});
 }
 
-function setPackagePublicity(packageBaseId, publicity, authToken, callback) {
+function apiPost(formData, callback) {
 	request.post({
-		url: 'https://bjspm.croncle.com/api.php', formData: {
-			action: 'SET_PACKAGE_PUBLICITY',
-			authToken: authToken,
-			package: packageBaseId,
-			publicity: publicity
-		}
-	}, (err, httpResponse, body) => {
+		url: 'https://bjspm.croncle.com/api.php', formData: formData }, (err, httpResponse, body) => {
 		if (err) {
 			console.log(panickMsg, err);
 			process.exit();
@@ -376,52 +429,56 @@ function setPackagePublicity(packageBaseId, publicity, authToken, callback) {
 	});
 }
 
+function getAccessListForUser(user, callback) {
+	apiPost({
+		action: 'GET_PACKAGE_ACCESS_LIST_USER',
+		user: user
+	}, (obj) => {
+		callback(obj.permissions);
+	});
+}
+
+function getAccessListForPackage(packageBaseId, user, callback) {
+	apiPost({
+		action: 'GET_PACKAGE_ACCESS_LIST',
+		package: packageBaseId,
+		user: user
+	}, (obj) => {
+		callback(obj.permissions);
+	});
+}
+
+function setPackagePublicity(packageBaseId, publicity, authToken, callback) {
+	apiPost({
+		action: 'SET_PACKAGE_PUBLICITY',
+		authToken: authToken,
+		package: packageBaseId,
+		publicity: publicity
+	}, callback);
+}
+
+function setUserPermissions(packageBaseId, user, permissions, authToken, callback) {
+	apiPost({
+		action: 'SET_USER_PERMISSIONS',
+		authToken: authToken,
+		user: user,
+		permissions: permissions,
+		package: packageBaseId
+	}, callback);
+}
+
 function requestUID(callback) {
-	request.post({
-		url: 'https://bjspm.croncle.com/api.php', formData: {
-			action: 'GET_NEXT_UID'
-		}
-	}, (err, httpResponse, body) => {
-		if (err) {
-			console.log(panickMsg, err);
-			process.exit();
-		}
-		try {
-			let obj = JSON.parse(body);
-			if (obj.error) {
-				console.log(obj.error);
-				process.exit();
-			}
-			callback(obj.uid);
-		} catch (e) {
-			console.log(body);
-			process.exit();
-		}
+	apiPost({
+		action: 'GET_NEXT_UID'
+	}, (obj) => {
+		callback(obj.uid);
 	});
 }
 
 function getServerConfig(callback) {
-	request.post({
-		url: 'https://bjspm.croncle.com/api.php', formData: {
-			action: 'GET_CONFIG'
-		}
-	}, (err, httpResponse, body) => {
-		if (err) {
-			console.log(panickMsg, err);
-			process.exit();
-		}
-		try {
-			let obj = JSON.parse(body);
-			if (obj.error) {
-				console.log('Server configuration error');
-				process.exit();
-			}
-			callback(obj);
-		} catch (e) {
-			console.log(body);
-			process.exit();
-		}
-	});
+	apiPost({
+		action: 'GET_CONFIG'
+	}, callback);
 }
 
 function downloadPackage(packageId, subfolder, callback) {
@@ -737,7 +794,7 @@ function storeAuthTokens() {
 
 function getAuthToken(username, callback) {
 	if (authTokens[username] === undefined) {
-		readline.question(`Password of "${username}": `, (password) => {
+		readline.question(`Password: `, (password) => {
 			if (password.length === 0) {
 				getAuthToken(username, callback);
 				return;
