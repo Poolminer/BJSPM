@@ -5,9 +5,9 @@ const archiver = require('archiver');
 const tmp = require('tmp');
 const request = require('request');
 const getAppDataPath = require("appdata-path");
-const download = require('download-to-file');
 const extract = require('extract-zip');
 const mkdirp = require('mkdirp');
+const filesize = require('filesize');
 const readline = require('readline').createInterface({
 	input: process.stdin,
 	output: process.stdout
@@ -27,13 +27,12 @@ const regexUserNoVersion = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}$/;
 const regexInstallUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}@.*$/;
 const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}_[A-F0-9]{1,7}$/;
 const regexUnnamed = /^[A-F0-9]{1,7}$/;
-const regexSubfolder = /^[a-zA-Z0-9\-\.]{1,255}$/;
 const ignoresPaths = [
 	bjspmPath + 'ignore.txt',
 	cwdPath + '.gitignore',
 ];
 const appDataPath = getAppDataPath('BJSPM');
-const appDataTmpPath = appDataPath + path.sep + 'tmp' + path.sep;
+const appDataPackagesPath = appDataPath + path.sep + 'packages' + path.sep;
 const authTokenStore = appDataPath + path.sep + 'authTokenStore.json';
 const API_STATUS = {
 	OK: 1,
@@ -56,8 +55,8 @@ let ignoreGlobs = [];
 if (!fs.existsSync(appDataPath)) {
 	fs.mkdirSync(appDataPath);
 }
-if (!fs.existsSync(appDataTmpPath)) {
-	fs.mkdirSync(appDataTmpPath);
+if (!fs.existsSync(appDataPackagesPath)) {
+	fs.mkdirSync(appDataPackagesPath);
 }
 
 let authTokens = {};
@@ -97,10 +96,11 @@ loadPackage(() => {
 			showCommandHelp(cmdArgs[0]);
 		} else {
 			switch (cmdArgs[0]) {
-				case 'init':
+				case 'init': {
 					initPackage();
+				}
 					break;
-				case 'publish':
+				case 'publish': {
 					if (!isValidPackage()) {
 						console.log('This package has an invalid configuration; run "bjspm init" to fix this.');
 						process.exit();
@@ -160,7 +160,6 @@ loadPackage(() => {
 									switch (obj.status) {
 										case API_STATUS.OK:
 											console.log('Package published, id: ' + obj.packageId);
-											console.log();
 											process.exit();
 											break;
 										case API_STATUS.ERR:
@@ -206,66 +205,106 @@ loadPackage(() => {
 							}
 						});
 					});
+				}
 					break;
 				case 'i':
-				case 'install':
-					if (cmdArgs.length === 1) {
-						let packageId = cmdArgs[1];
-						if (!isValidPackageInstallId(packageId)) {
-							console.log('Invalid package identifier');
-							process.exit();
-						}
-						console.log('Downloading');
-						downloadPackage(packageId, '', (filepath) => {
-							console.log(filepath);
-						});
-					} else if (cmdArgs.length === 2 || cmdArgs.length === 3) {
-						let packageId = cmdArgs[1];
-						let subfolder = cmdArgs.length === 3 ? cmdArgs[2] : '';
-						console.log(subfolder);
-						if (subfolder.length !== 0 && !isValidSubfolder(subfolder)) {
-							console.log('Invalid subfolder name, only alphanumeric characters, dashes and dots are allowed.');
-							process.exit();
-						}
-						if (!isValidPackageInstallId(packageId)) {
-							console.log('Invalid package identifier');
-							process.exit();
-						}
-						let downloadId = null;
-						if (packageId.indexOf('@') !== -1) {
-							let parts1 = packageId.split('@');
-							let parts2 = parts1[1].split('/');
-							let user = parts2[0];
-							let packageName = parts2[1];
-							if (parts1.length === 2) {
-								downloadId = packageId;
-							} else {
-								let version = parts1[2];
-								getPackageVersions(packageName, (versions) => {
-									let highestMatch = semverMaxSatisfying(versions, version);
-									if (highestMatch === null) {
-										process.exit();
+				case 'install': {
+					let packageId = cmdArgs[1];
+					let packageBaseId = null;
+					let packageVersion = null;
+					let folder = packagesPath;
+					let absolute = false;
+					for (let i = 2; i < cmdArgs.length; i += 2) {
+						if (cmdArgs[i] !== undefined) {
+							switch (cmdArgs[i].toLowerCase()) {
+								case '--dir':
+									if (cmdArgs[i + 1] !== undefined) {
+										folder = cmdArgs[i + 1];
+										absolute = true;
+									} else {
+										showCommandHelp('install');
 									}
-									downloadId = `@${user}/${packageName}@${highestMatch}`;
-								});
+									break;
 							}
-						} else {
-							downloadId = packageId;
 						}
-						downloadPackage(downloadId, subfolder, (filepath) => {
-							console.log(filepath);
+					}
+					if (!isValidPackageInstallId(packageId)) {
+						console.log('Invalid package identifier');
+						process.exit();
+					}
+					let downloadId = null;
+					if (packageId.indexOf('@') !== -1) {
+						let parts1 = packageId.split('@');
+						let parts2 = parts1[1].split('/');
+						let user = parts2[0];
+						let packageName = parts2[1];
+						packageBaseId = `@${user}/${packageName}`;
+						getPackageVersions(packageBaseId, (versions) => {
+							if (versions.length === 0) {
+								console.log('Could not retrieve package versions from server');
+								process.exit();
+							}
+							getPackageTags(packageBaseId, (tags) => {
+								if (tags.length === 0) {
+									console.log('Could not retrieve package tags from server');
+									process.exit();
+								}
+								if (parts1.length === 2) {
+									downloadId = packageId;
+									packageVersion = tags['latest'];
+								} else {
+									packageVersion = parts1[2];
+									if (isValidPackageTag(packageVersion)) {
+										if (tags[packageVersion] === undefined) {
+											console.log('No such package tag, available tags:');
+											console.log(tags.join(', '));
+											process.exit();
+										}
+										downloadId = `${packageBaseId}@${packageVersion}`;
+										packageVersion = tags[packageVersion];
+									} else if (semverValid(packageVersion)) {
+										let highestMatch = semverMaxSatisfying(versions, packageVersion);
+										if (highestMatch === null) {
+											console.log('Could not find highest version');
+											process.exit();
+										}
+										downloadId = `@${user}/${packageName}@${highestMatch}`;
+									}
+								}
+								let targetPath = absolute ? folder : path.resolve(folder, `@${user}`, `${packageName}`);
+								deleteDirectory(targetPath);
+								downloadPackageChain(downloadId, absolute, targetPath, (filepath) => {
+									package.dependencies[packageBaseId] = `^${packageVersion}`;
+									storePackage();
+
+									console.log(filepath);
+									process.exit();
+								});
+							});
 						});
 					} else {
-						showCommandHelp('install');
+						downloadId = packageId;
+						packageBaseId = packageId;
+						let targetPath = path.resolve(folder, packageBaseId);
+						
+						deleteDirectory(targetPath);
+						downloadPackageChain(downloadId, absolute, targetPath, (filepath) => {
+							package.dependencies[packageBaseId] = '';
+							storePackage();
+
+							console.log(filepath);
+							process.exit();
+						});
 					}
+				}
 					break;
-				case 'access':
+				case 'access': {
 					if (cmdArgs.length === 1) {
 						showCommandHelp('access');
 					} else {
 						switch (cmdArgs[1]) {
 							case 'public':
-							case 'restricted':
+							case 'restricted': {
 								let package;
 								let packageType = getPackageType();
 								if (cmdArgs.length === 2) { // local user package
@@ -317,6 +356,7 @@ loadPackage(() => {
 										});
 									}, username);
 								}
+							}
 								break;
 							case 'set':
 								if (cmdArgs.length === 2) {
@@ -324,7 +364,7 @@ loadPackage(() => {
 								} else {
 									switch (cmdArgs[2]) {
 										case 'read-only':
-										case 'read-write':
+										case 'read-write': {
 											let user = cmdArgs[3];
 											let package;
 											let packageType = getPackageType();
@@ -358,34 +398,99 @@ loadPackage(() => {
 													});
 												});
 											}, cmdArgs.length === 4 ? package.username : '');
+										}
 											break;
 										default:
 											showCommandHelp('access');
 									}
 								}
 								break;
-							case 'ls-packages':
+							case 'ls-packages': {
 								if (cmdArgs.length !== 3) {
 									showCommandHelp('ls-packages');
+								} else {
+									let user = cmdArgs[2];
+									if (!isValidUsername(user)) {
+										console.log('Invalid username');
+										process.exit();
+									}
+									getAccessListForUser(user, (obj) => {
+										let json = JSON.stringify(obj, undefined, 2);
+										console.log(json);
+										process.exit();
+									});
 								}
-								let user = cmdArgs[2];
-								if (!isValidUsername(user)) {
-									console.log('Invalid username');
-									process.exit();
+							}
+								break;
+							case 'ls-collaborators': {
+								let user;
+								let package;
+								let packageType = getPackageType();
+								if (cmdArgs.length > 4) {
+									showCommandHelp('ls-collaborators');
+									break;
 								}
-								getAccessListForUser(user, (obj) => {
+								if (cmdArgs.length === 2) { // local user package
+									if (packageType !== 'user') {
+										console.log('No package specified');
+										process.exit();
+										break;
+									}
+									package = '@' + package.username + '/' + package.name;
+								} else {
+									package = cmdArgs[2];
+									user = cmdArgs.length === 4 ? cmdArgs[3] : '';
+								}
+								getAccessListForPackage(package, user, (obj) => {
 									let json = JSON.stringify(obj, undefined, 2);
 									console.log(json);
 									process.exit();
 								});
-								break;
-							case 'ls-collaborators':
-
+							}
 								break;
 							default:
 								showCommandHelp('access');
 						}
 					}
+				}
+					break;
+				case 'cache': {
+					let files = fs.readdirSync(appDataPackagesPath).filter(file => file.endsWith('.zip'));
+					let filePaths = [];
+					let totalSize = 0;
+					for (let file of files) {
+						let filePath = path.resolve(appDataPackagesPath, file);
+						let stat = fs.statSync(filePath);
+						totalSize += stat.size;
+						filePaths.push(filePath);
+					}
+					if (cmdArgs.length === 1) {
+						console.log(`Cache: ${files.length} packages, ${filesize(totalSize)}`);
+						process.exit();
+					} else {
+						switch (cmdArgs[1]) {
+							case 'clear': {
+								for (let filePath of filePaths) {
+									try {
+										fs.unlinkSync(filePath);
+									} catch (e) {
+										console.log(panickMsg, e);
+										process.exit();
+									}
+								}
+								console.log(`Cache cleared (${files.length} packages, ${filesize(totalSize)})`);
+								process.exit();
+							}
+								break;
+						}
+					}
+				}
+					break;
+				case 'test': {
+					console.log(cwdPath);
+					console.log(getSubDirectories(cwdPath));
+					process.exit();
+				}
 					break;
 				default:
 					showQuickHelp();
@@ -393,6 +498,48 @@ loadPackage(() => {
 		}
 	});
 });
+
+function download(url, filename, onProgress, callback) {
+	const file = fs.createWriteStream(filename);
+	let bytesReceived = 0;
+	let bytesTotal = 0;
+
+	// Send request to the given URL
+	request.get(url)
+		.on('response', (response) => {
+			if (response.statusCode !== 200) {
+				return callback('Response status was ' + response.statusCode);
+			}
+			bytesTotal = parseInt(response.headers['content-length'] || 0);
+		})
+		.on('data', (chunk) => {
+			bytesReceived += chunk.length;
+			if (bytesTotal !== 0) {
+				onProgress({
+					bytesReceived: bytesReceived,
+					bytesTotal: bytesTotal,
+					percentage: bytesReceived / bytesTotal
+				});
+			} else {
+				onProgress({
+					bytesReceived: bytesReceived
+				});
+			}
+		})
+		.pipe(file)
+		.on('error', (err) => {
+			fs.unlinkSync(filename);
+		});
+
+	file.on('finish', () => {
+		file.close(callback);
+	});
+
+	file.on('error', (err) => {
+		fs.unlinkSync(filename);
+		return callback(err.message);
+	});
+}
 
 function pollUsername(callback, defaultOption = '') {
 	let prompt = defaultOption ? `Username: (${defaultOption}) ` : `Username: `;
@@ -410,7 +557,8 @@ function pollUsername(callback, defaultOption = '') {
 
 function apiPost(formData, callback) {
 	request.post({
-		url: 'https://bjspm.croncle.com/api.php', formData: formData }, (err, httpResponse, body) => {
+		url: 'https://bjspm.croncle.com/api.php', formData: formData
+	}, (err, httpResponse, body) => {
 		if (err) {
 			console.log(panickMsg, err);
 			process.exit();
@@ -421,6 +569,24 @@ function apiPost(formData, callback) {
 				console.log(obj.error);
 				process.exit();
 			}
+			callback(obj);
+		} catch (e) {
+			console.log(body);
+			process.exit();
+		}
+	});
+}
+
+function getJson(url, callback) {
+	request.get({
+		url: url
+	}, (err, httpResponse, body) => {
+		if (err) {
+			console.log(panickMsg, err);
+			process.exit();
+		}
+		try {
+			let obj = JSON.parse(body);
 			callback(obj);
 		} catch (e) {
 			console.log(body);
@@ -475,63 +641,197 @@ function requestUID(callback) {
 	});
 }
 
+function registerPackageDownload(packageId, callback) {
+	apiPost({
+		action: 'REGISTER_PACKAGE_DOWNLOAD',
+		package: packageId
+	}, (obj) => {
+		if (callback !== undefined) {
+			callback(obj);
+		}
+	});
+}
+
 function getServerConfig(callback) {
 	apiPost({
 		action: 'GET_CONFIG'
 	}, callback);
 }
 
-function downloadPackage(packageId, subfolder, callback) {
-	let url = webPackagesPath + packageId + '?download';
-	let zipPath = appDataTmpPath + packageId + '.zip';
-	let targetPath = packagesPath;
-	if (subfolder.length !== 0) {
-		targetPath += subfolder + path.sep;
-	}
-	targetPath += packageId + path.sep;
-	mkdirsSync(targetPath);
-	download(url, zipPath, (err, filepath) => {
-		if (err) {
-			if (!fs.existsSync(zipPath)) {
-				console.log(panickMsg);
-				console.trace();
-				process.exit();
-			}
-		} else {
-			extract(zipPath, { dir: targetPath }).then(() => {
-				fs.unlink(zipPath, function (err) {
-					if (err) {
-						console.log(panickMsg);
-						console.trace();
-						process.exit();
+function getPackageDownloadUrls(packageId, callback) {
+	apiPost({
+		action: 'GET_PACKAGE_DOWNLOAD_URLS',
+		package: packageId
+	}, (obj) => {
+		callback(obj.urls);
+	});
+}
+
+function getAppDataPackagePath(packageId) {
+	let fileName = packageId.replace('/', '@');
+	let filePath = appDataPackagesPath + fileName + '.zip';
+	return filePath;
+}
+
+function downloadPackageChain(packageId, absolute, targetPath, callback) {
+	console.log('pth', targetPath);
+	downloadPackage(packageId, absolute, targetPath, () => {
+		let packageFile = path.resolve(targetPath, 'bjspm', 'package.json');
+		if (fs.existsSync(packageFile)) {
+			loadJsonFile(packageFile, (obj) => {
+				if (obj !== null) {
+					if (obj.dependencies !== undefined) {
+						for (let dependency of dependencies) {
+							console.log(dependency, dependencies[dependency]);
+						}
 					}
-					callback(targetPath);
-				});
-			}, (err) => {
-				console.log(panickMsg);
-				console.trace();
-				process.exit();
+				}
 			});
+		} else {
+			callback(packageFile);
 		}
 	});
 }
 
+function getPackageInstallPath(packageBaseId) {
+	if (!fs.existsSync(packagesPath) || !fs.statSync(packagesPath).isDirectory()) {
+		return null;
+	}
+	let dirPaths = getSubDirectories(packagesPath);
+	for (let path of dirPaths) {
+		let files = fs.readdirSync(path);
+		for (let file of files) {
+			if (file === packageBaseId) {
+				return path;
+			}
+		}
+	}
+	return null;
+}
+
+function deleteDirectory(path) {
+	let files = getDirectoryEntries(path);
+	let dirs = getSubDirectories(path);
+
+	for (let file of files) {
+		fs.unlinkSync(file);
+	}
+	for (let dir of dirs) {
+		fs.rmdirSync(dir);
+	}
+	fs.rmdirSync(path);
+}
+
+function isPackageInCache(packageId){
+	let zipPath = getAppDataPackagePath(packageId);
+	return fs.existsSync(zipPath);
+}
+
+function downloadPackage(packageId, absolute, targetPath, callback, urlIndex = 0) {
+	let zipPath = getAppDataPackagePath(packageId);
+	mkdirsSync(targetPath);
+	let onDownloaded = () => {
+		console.log('Extracting files from package...');
+		extract(zipPath, { dir: targetPath }).then(() => {
+			// fs.unlink(zipPath, function (err) {
+			// 	if (err) {
+			// 		console.log(panickMsg);
+			// 		console.trace();
+			// 		process.exit();
+			// 	}
+			// 	callback(targetPath);
+			// });
+			callback(targetPath);
+		}, (err) => {
+			console.log(panickMsg);
+			console.trace();
+			process.exit();
+		});
+	};
+	if (fs.existsSync(zipPath)) {
+		console.log(`Package "${packageId}" found in cache`);
+		onDownloaded();
+	} else {
+		getPackageDownloadUrls(packageId, (urls) => {
+			let urlArray = urls[urlIndex];
+			if (urlArray === undefined) {
+				console.log("The package archive could not be downloaded.");
+				process.exit();
+			}
+			let url = urlArray[absolute ? 'abs' : 'rel'];
+			getPackageJson(packageId, (package) => {
+				let prefix = ' -> ';
+				if (urlIndex === 0) {
+					console.log(`Downloading package "${packageId}"`);
+					if (package.files.length > 0) {
+						console.log(prefix + packageId + '/' + package.files[0].path);
+					}
+				}
+				let downloadIndex = -1;
+				let rawTotalSize = 0;
+				for (let file of package.files) {
+					rawTotalSize += file.size;
+				}
+				if (rawTotalSize === 0) {
+					let accumulatedSize = 0;
+					for (let file of package.files) {
+						accumulatedSize += 1;
+						file.atSizePercentage = accumulatedSize / files.length;
+					}
+				} else {
+					let accumulatedSize = 0;
+					for (let file of package.files) {
+						accumulatedSize += file.size;
+						file.atSizePercentage = accumulatedSize / rawTotalSize;
+					}
+				}
+				download(url, zipPath, (status) => {
+					for (let i = 0; i < package.files.length; i++) {
+						let file = package.files[i];
+						let nextFile = package.files[i + 1];
+						if (i > downloadIndex && status.percentage >= file.atSizePercentage) {
+							if (nextFile !== undefined) {
+								console.log(prefix + packageId + '/' + nextFile.path);
+							}
+							downloadIndex++;
+						}
+					}
+				}, (err) => {
+					if (err) {
+						if (!fs.existsSync(zipPath)) {
+							if (urls.length > urlIndex + 1) {
+								downloadPackage(packageId, absolute, targetPath, callback, urlIndex + 1);
+							} else {
+								console.log(panickMsg);
+								console.trace();
+								process.exit();
+							}
+						}
+					} else {
+						if (urlArray['regDl']) {
+							registerPackageDownload(packageId);
+						}
+						onDownloaded();
+					}
+				});
+			});
+		});
+	}
+}
+
+function getPackageTags(packageId, callback) {
+	let url = webPackagesPath + packageId + '?tags';
+	getJson(url, callback);
+}
+
 function getPackageVersions(packageId, callback) {
-	request.get({
-		url: webPackagesPath + packageId
-	}, (err, httpResponse, body) => {
-		if (err) {
-			console.log(panickMsg, err);
-			process.exit();
-		}
-		try {
-			let obj = JSON.parse(body);
-			callback(obj);
-		} catch (e) {
-			console.log(body);
-			process.exit();
-		}
-	});
+	let url = webPackagesPath + packageId + '?versions';
+	getJson(url, callback);
+}
+
+function getPackageJson(packageId, callback) {
+	let url = webPackagesPath + packageId + '?json';
+	getJson(url, callback);
 }
 
 function uploadPackage(path, authToken, type, tag, callback) {
@@ -563,20 +863,6 @@ function getValidLicense(str) {
 
 function isString(obj) {
 	return typeof obj === 'string';
-}
-
-function isValidSubfolder(name) {
-	if (!isString(name)) {
-		return false;
-	}
-	name = name.replace(/\\+/g, '/').replace(/\/+/g, '/');
-	let parts = name.split('/');
-	for (let part of parts) {
-		if (!regexSubfolder.test(name)) {
-			return false;
-		}
-	}
-	return true;
 }
 
 function isValidLicense(name) {
@@ -629,7 +915,7 @@ function isValidPackageKeywords(keywords) {
 		return false;
 	}
 	for (let keyword of keywords) {
-		if (!isString(name) || keyword.length === 0) {
+		if (!isString(keyword) || keyword.length === 0) {
 			return false;
 		}
 	}
@@ -689,16 +975,30 @@ function zipPackage(callback) {
 	});
 }
 
-function getDirectoryEntries(dir, relDir = '') {
+function getSubDirectories(dir) {
 	let results = [];
 	let list = fs.readdirSync(dir);
-	if (list.length === 0) {
-		return results;
-	}
+
 	for (let fileName of list) {
 		let filePath = path.resolve(dir, fileName);
 		let stat = fs.statSync(filePath);
-		if (stat && stat.isDirectory()) {
+		if (stat.isDirectory()) {
+			results.push(filePath);
+			let subPaths = getSubDirectories(filePath);
+			results = results.concat(subPaths);
+		}
+	}
+	return results;
+}
+
+function getDirectoryEntries(dir, relDir = '') {
+	let results = [];
+	let list = fs.readdirSync(dir);
+
+	for (let fileName of list) {
+		let filePath = path.resolve(dir, fileName);
+		let stat = fs.statSync(filePath);
+		if (stat.isDirectory()) {
 			let subPaths = getDirectoryEntries(filePath, relDir + fileName + '/');
 			results = results.concat(subPaths);
 		} else {
@@ -709,7 +1009,7 @@ function getDirectoryEntries(dir, relDir = '') {
 			});
 		}
 	}
-	return results
+	return results;
 }
 
 function getPackageType() {
@@ -719,6 +1019,29 @@ function getPackageType() {
 		return 'named';
 	} else { // unnamed standalone package
 		return 'unnamed';
+	}
+}
+
+function loadJsonFile(jsonPath, callback, maxSize) {
+	if (fs.existsSync(jsonPath)) {
+		let stats = fs.statSync(jsonPath);
+		if (stats.size > maxSize) {
+			return null;
+		}
+		fs.readFile(jsonPath, 'utf8', function (err, data) {
+			if (err) {
+				console.log(panickMsg, err);
+				process.exit();
+			}
+			try {
+				let obj = JSON.parse(data);
+				callback(obj);
+			} catch (e) {
+				callback(null);
+			}
+		});
+	} else {
+		callback(null);
 	}
 }
 
@@ -784,12 +1107,13 @@ function loadIgnores(callback) {
 
 function storeAuthTokens() {
 	let json = JSON.stringify(authTokens, undefined, 2);
-	fs.writeFile(authTokenStore, json, 'utf8', function (err) {
-		if (err) {
-			console.log(panickMsg, err);
-			process.exit();
-		}
-	});
+	fs.writeFileSync(authTokenStore, json, 'utf8');
+}
+
+function storePackage() {
+	let json = JSON.stringify(package, undefined, 2);
+	mkdirsSync(bjspmPath);
+	fs.writeFileSync(packageJsonPath, json, 'utf8');
 }
 
 function getAuthToken(username, callback) {
@@ -855,6 +1179,7 @@ Press ^C at any time to quit.
 `);
 
 	let newPackage = getEmptyPackage();
+	newPackage.dependencies = package.dependencies;
 
 	let writePackage = (obj) => {
 		let json = JSON.stringify(obj, undefined, 2);
@@ -866,13 +1191,8 @@ Press ^C at any time to quit.
 			let _answer = answer.toLowerCase();
 			if (['', 'y', 'yes'].indexOf(_answer) !== -1) {
 				mkdirsSync(bjspmPath);
-				fs.writeFile(packageJsonPath, json, 'utf8', function (err) {
-					if (err) {
-						console.log(panickMsg, err);
-						process.exit();
-					}
-					process.exit();
-				});
+				fs.writeFileSync(packageJsonPath, json, 'utf8');
+				process.exit();
 			} else {
 				console.log('Aborted.\n');
 				process.exit();
