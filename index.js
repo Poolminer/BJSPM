@@ -6,7 +6,6 @@ const tmp = require('tmp');
 const request = require('request');
 const getAppDataPath = require("appdata-path");
 const extract = require('extract-zip');
-const mkdirp = require('mkdirp');
 const filesize = require('filesize');
 const readline = require('readline').createInterface({
 	input: process.stdin,
@@ -15,6 +14,7 @@ const readline = require('readline').createInterface({
 const Minimatch = require('minimatch').Minimatch;
 const semverValid = require('semver/functions/valid');
 const semverMaxSatisfying = require('semver/ranges/max-satisfying');
+const semverMajor = require('semver/functions/major')
 const semver2Regex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 const path = require('path');
 const cwdPath = process.cwd() + path.sep;
@@ -22,11 +22,13 @@ const bjspmPath = process.cwd() + path.sep + 'bjspm' + path.sep;
 const packagesPath = bjspmPath + 'packages' + path.sep;
 const webPackagesPath = 'https://bjspm.croncle.com/package/';
 const packageJsonPath = bjspmPath + 'package.json';
-const regexUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}(?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
-const regexUserNoVersion = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}$/;
-const regexInstallUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}@.*$/;
-const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}_[A-F0-9]{1,7}$/;
+const regexUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
+const regexUserNoVersion = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]$/;
+const regexInstallUser = /^@([a-z0-9_]{1,16})\/([a-z0-9][a-z0-9_\-\.]{0,240}[a-z])@?(.*)$/;
+const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]_[A-F0-9]{1,7}$/;
 const regexUnnamed = /^[A-F0-9]{1,7}$/;
+const regexPackageName = /^[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]$/;
+const regexMajorVersion = /^\d{1,9}$/;
 const ignoresPaths = [
 	bjspmPath + 'ignore.txt',
 	cwdPath + '.gitignore',
@@ -40,24 +42,20 @@ const API_STATUS = {
 }
 const licences = ['', '0BSD', 'AAL', 'Abstyles', 'Adobe-2006', 'Adobe-Glyph', 'ADSL', 'AFL-1.1', 'AFL-1.2', 'AFL-2.0', 'AFL-2.1', 'AFL-3.0', 'Afmparse', 'AGPL-1.0-only', 'AGPL-1.0-or-later', 'AGPL-3.0-only', 'AGPL-3.0-or-later', 'Aladdin', 'AMDPLPA', 'AML', 'AMPAS', 'ANTLR-PD', 'Apache-1.0', 'Apache-1.1', 'Apache-2.0', 'APAFML', 'APL-1.0', 'APSL-1.0', 'APSL-1.1', 'APSL-1.2', 'APSL-2.0', 'Artistic-1.0', 'Artistic-1.0-cl8', 'Artistic-1.0-Perl', 'Artistic-2.0', 'Bahyph', 'Barr', 'Beerware', 'BitTorrent-1.0', 'BitTorrent-1.1', 'blessing', 'BlueOak-1.0.0', 'Borceux', 'BSD-1-Clause', 'BSD-2-Clause', 'BSD-2-Clause-FreeBSD', 'BSD-2-Clause-NetBSD', 'BSD-2-Clause-Patent', 'BSD-3-Clause', 'BSD-3-Clause-Attribution', 'BSD-3-Clause-Clear', 'BSD-3-Clause-LBNL', 'BSD-3-Clause-No-Nuclear-License', 'BSD-3-Clause-No-Nuclear-License-2014', 'BSD-3-Clause-No-Nuclear-Warranty', 'BSD-3-Clause-Open-MPI', 'BSD-4-Clause', 'BSD-4-Clause-UC', 'BSD-Protection', 'BSD-Source-Code', 'BSL-1.0', 'bzip2-1.0.5', 'bzip2-1.0.6', 'Caldera', 'CATOSL-1.1', 'CC-BY-1.0', 'CC-BY-2.0', 'CC-BY-2.5', 'CC-BY-3.0', 'CC-BY-4.0', 'CC-BY-NC-1.0', 'CC-BY-NC-2.0', 'CC-BY-NC-2.5', 'CC-BY-NC-3.0', 'CC-BY-NC-4.0', 'CC-BY-NC-ND-1.0', 'CC-BY-NC-ND-2.0', 'CC-BY-NC-ND-2.5', 'CC-BY-NC-ND-3.0', 'CC-BY-NC-ND-4.0', 'CC-BY-NC-SA-1.0', 'CC-BY-NC-SA-2.0', 'CC-BY-NC-SA-2.5', 'CC-BY-NC-SA-3.0', 'CC-BY-NC-SA-4.0', 'CC-BY-ND-1.0', 'CC-BY-ND-2.0', 'CC-BY-ND-2.5', 'CC-BY-ND-3.0', 'CC-BY-ND-4.0', 'CC-BY-SA-1.0', 'CC-BY-SA-2.0', 'CC-BY-SA-2.5', 'CC-BY-SA-3.0', 'CC-BY-SA-4.0', 'CC-PDDC', 'CC0-1.0', 'CDDL-1.0', 'CDDL-1.1', 'CDLA-Permissive-1.0', 'CDLA-Sharing-1.0', 'CECILL-1.0', 'CECILL-1.1', 'CECILL-2.0', 'CECILL-2.1', 'CECILL-B', 'CECILL-C', 'CERN-OHL-1.1', 'CERN-OHL-1.2', 'ClArtistic', 'CNRI-Jython', 'CNRI-Python', 'CNRI-Python-GPL-Compatible', 'Condor-1.1', 'copyleft-next-0.3.0', 'copyleft-next-0.3.1', 'CPAL-1.0', 'CPL-1.0', 'CPOL-1.02', 'Crossword', 'CrystalStacker', 'CUA-OPL-1.0', 'Cube', 'curl', 'D-FSL-1.0', 'diffmark', 'DOC', 'Dotseqn', 'DSDP', 'dvipdfm', 'ECL-1.0', 'ECL-2.0', 'EFL-1.0', 'EFL-2.0', 'eGenix', 'Entessa', 'EPL-1.0', 'EPL-2.0', 'ErlPL-1.1', 'etalab-2.0', 'EUDatagrid', 'EUPL-1.0', 'EUPL-1.1', 'EUPL-1.2', 'Eurosym', 'Fair', 'Frameworx-1.0', 'FreeImage', 'FSFAP', 'FSFUL', 'FSFULLR', 'FTL', 'GFDL-1.1-only', 'GFDL-1.1-or-later', 'GFDL-1.2-only', 'GFDL-1.2-or-later', 'GFDL-1.3-only', 'GFDL-1.3-or-later', 'Giftware', 'GL2PS', 'Glide', 'Glulxe', 'gnuplot', 'GPL-1.0-only', 'GPL-1.0-or-later', 'GPL-2.0-only', 'GPL-2.0-or-later', 'GPL-3.0-only', 'GPL-3.0-or-later', 'gSOAP-1.3b', 'HaskellReport', 'HPND', 'HPND-sell-variant', 'IBM-pibs', 'ICU', 'IJG', 'ImageMagick', 'iMatix', 'Imlib2', 'Info-ZIP', 'Intel', 'Intel-ACPI', 'Interbase-1.0', 'IPA', 'IPL-1.0', 'ISC', 'JasPer-2.0', 'JPNIC', 'JSON', 'LAL-1.2', 'LAL-1.3', 'Latex2e', 'Leptonica', 'LGPL-2.0-only', 'LGPL-2.0-or-later', 'LGPL-2.1-only', 'LGPL-2.1-or-later', 'LGPL-3.0-only', 'LGPL-3.0-or-later', 'LGPLLR', 'Libpng', 'libpng-2.0', 'libtiff', 'LiLiQ-P-1.1', 'LiLiQ-R-1.1', 'LiLiQ-Rplus-1.1', 'Linux-OpenIB', 'LPL-1.0', 'LPL-1.02', 'LPPL-1.0', 'LPPL-1.1', 'LPPL-1.2', 'LPPL-1.3a', 'LPPL-1.3c', 'MakeIndex', 'MirOS', 'MIT', 'MIT-0', 'MIT-advertising', 'MIT-CMU', 'MIT-enna', 'MIT-feh', 'MITNFA', 'Motosoto', 'mpich2', 'MPL-1.0', 'MPL-1.1', 'MPL-2.0', 'MPL-2.0-no-copyleft-exception', 'MS-PL', 'MS-RL', 'MTLL', 'MulanPSL-1.0', 'Multics', 'Mup', 'NASA-1.3', 'Naumen', 'NBPL-1.0', 'NCSA', 'Net-SNMP', 'NetCDF', 'Newsletr', 'NGPL', 'NLOD-1.0', 'NLPL', 'Nokia', 'NOSL', 'Noweb', 'NPL-1.0', 'NPL-1.1', 'NPOSL-3.0', 'NRL', 'NTP', 'OCCT-PL', 'OCLC-2.0', 'ODbL-1.0', 'ODC-By-1.0', 'OFL-1.0', 'OFL-1.1', 'OGL-Canada-2.0', 'OGL-UK-1.0', 'OGL-UK-2.0', 'OGL-UK-3.0', 'OGTSL', 'OLDAP-1.1', 'OLDAP-1.2', 'OLDAP-1.3', 'OLDAP-1.4', 'OLDAP-2.0', 'OLDAP-2.0.1', 'OLDAP-2.1', 'OLDAP-2.2', 'OLDAP-2.2.1', 'OLDAP-2.2.2', 'OLDAP-2.3', 'OLDAP-2.4', 'OLDAP-2.5', 'OLDAP-2.6', 'OLDAP-2.7', 'OLDAP-2.8', 'OML', 'OpenSSL', 'OPL-1.0', 'OSET-PL-2.1', 'OSL-1.0', 'OSL-1.1', 'OSL-2.0', 'OSL-2.1', 'OSL-3.0', 'Parity-6.0.0', 'PDDL-1.0', 'PHP-3.0', 'PHP-3.01', 'Plexus', 'PostgreSQL', 'psfrag', 'psutils', 'Python-2.0', 'Qhull', 'QPL-1.0', 'Rdisc', 'RHeCos-1.1', 'RPL-1.1', 'RPL-1.5', 'RPSL-1.0', 'RSA-MD', 'RSCPL', 'Ruby', 'SAX-PD', 'Saxpath', 'SCEA', 'Sendmail', 'Sendmail-8.23', 'SGI-B-1.0', 'SGI-B-1.1', 'SGI-B-2.0', 'SHL-0.5', 'SHL-0.51', 'SimPL-2.0', 'SISSL', 'SISSL-1.2', 'Sleepycat', 'SMLNJ', 'SMPPL', 'SNIA', 'Spencer-86', 'Spencer-94', 'Spencer-99', 'SPL-1.0', 'SSH-OpenSSH', 'SSH-short', 'SSPL-1.0', 'SugarCRM-1.1.3', 'SWL', 'TAPR-OHL-1.0', 'TCL', 'TCP-wrappers', 'TMate', 'TORQUE-1.1', 'TOSL', 'TU-Berlin-1.0', 'TU-Berlin-2.0', 'UCL-1.0', 'Unicode-DFS-2015', 'Unicode-DFS-2016', 'Unicode-TOU', 'Unlicense', 'UPL-1.0', 'Vim', 'VOSTROM', 'VSL-1.0', 'W3C', 'W3C-19980720', 'W3C-20150513', 'Watcom-1.0', 'Wsuipa', 'WTFPL', 'X11', 'Xerox', 'XFree86-1.1', 'xinetd', 'Xnet', 'xpp', 'XSkat', 'YPL-1.0', 'YPL-1.1', 'Zed', 'Zend-2.0', 'Zimbra-1.3', 'Zimbra-1.4', 'Zlib', 'zlib-acknowledgement', 'ZPL-1.1', 'ZPL-2.0', 'ZPL-2.1'];
 const licencesLowerCase = ['', '0bsd', 'aal', 'abstyles', 'adobe-2006', 'adobe-glyph', 'adsl', 'afl-1.1', 'afl-1.2', 'afl-2.0', 'afl-2.1', 'afl-3.0', 'afmparse', 'agpl-1.0-only', 'agpl-1.0-or-later', 'agpl-3.0-only', 'agpl-3.0-or-later', 'aladdin', 'amdplpa', 'aml', 'ampas', 'antlr-pd', 'apache-1.0', 'apache-1.1', 'apache-2.0', 'apafml', 'apl-1.0', 'apsl-1.0', 'apsl-1.1', 'apsl-1.2', 'apsl-2.0', 'artistic-1.0', 'artistic-1.0-cl8', 'artistic-1.0-perl', 'artistic-2.0', 'bahyph', 'barr', 'beerware', 'bittorrent-1.0', 'bittorrent-1.1', 'blessing', 'blueoak-1.0.0', 'borceux', 'bsd-1-clause', 'bsd-2-clause', 'bsd-2-clause-freebsd', 'bsd-2-clause-netbsd', 'bsd-2-clause-patent', 'bsd-3-clause', 'bsd-3-clause-attribution', 'bsd-3-clause-clear', 'bsd-3-clause-lbnl', 'bsd-3-clause-no-nuclear-license', 'bsd-3-clause-no-nuclear-license-2014', 'bsd-3-clause-no-nuclear-warranty', 'bsd-3-clause-open-mpi', 'bsd-4-clause', 'bsd-4-clause-uc', 'bsd-protection', 'bsd-source-code', 'bsl-1.0', 'bzip2-1.0.5', 'bzip2-1.0.6', 'caldera', 'catosl-1.1', 'cc-by-1.0', 'cc-by-2.0', 'cc-by-2.5', 'cc-by-3.0', 'cc-by-4.0', 'cc-by-nc-1.0', 'cc-by-nc-2.0', 'cc-by-nc-2.5', 'cc-by-nc-3.0', 'cc-by-nc-4.0', 'cc-by-nc-nd-1.0', 'cc-by-nc-nd-2.0', 'cc-by-nc-nd-2.5', 'cc-by-nc-nd-3.0', 'cc-by-nc-nd-4.0', 'cc-by-nc-sa-1.0', 'cc-by-nc-sa-2.0', 'cc-by-nc-sa-2.5', 'cc-by-nc-sa-3.0', 'cc-by-nc-sa-4.0', 'cc-by-nd-1.0', 'cc-by-nd-2.0', 'cc-by-nd-2.5', 'cc-by-nd-3.0', 'cc-by-nd-4.0', 'cc-by-sa-1.0', 'cc-by-sa-2.0', 'cc-by-sa-2.5', 'cc-by-sa-3.0', 'cc-by-sa-4.0', 'cc-pddc', 'cc0-1.0', 'cddl-1.0', 'cddl-1.1', 'cdla-permissive-1.0', 'cdla-sharing-1.0', 'cecill-1.0', 'cecill-1.1', 'cecill-2.0', 'cecill-2.1', 'cecill-b', 'cecill-c', 'cern-ohl-1.1', 'cern-ohl-1.2', 'clartistic', 'cnri-jython', 'cnri-python', 'cnri-python-gpl-compatible', 'condor-1.1', 'copyleft-next-0.3.0', 'copyleft-next-0.3.1', 'cpal-1.0', 'cpl-1.0', 'cpol-1.02', 'crossword', 'crystalstacker', 'cua-opl-1.0', 'cube', 'curl', 'd-fsl-1.0', 'diffmark', 'doc', 'dotseqn', 'dsdp', 'dvipdfm', 'ecl-1.0', 'ecl-2.0', 'efl-1.0', 'efl-2.0', 'egenix', 'entessa', 'epl-1.0', 'epl-2.0', 'erlpl-1.1', 'etalab-2.0', 'eudatagrid', 'eupl-1.0', 'eupl-1.1', 'eupl-1.2', 'eurosym', 'fair', 'frameworx-1.0', 'freeimage', 'fsfap', 'fsful', 'fsfullr', 'ftl', 'gfdl-1.1-only', 'gfdl-1.1-or-later', 'gfdl-1.2-only', 'gfdl-1.2-or-later', 'gfdl-1.3-only', 'gfdl-1.3-or-later', 'giftware', 'gl2ps', 'glide', 'glulxe', 'gnuplot', 'gpl-1.0-only', 'gpl-1.0-or-later', 'gpl-2.0-only', 'gpl-2.0-or-later', 'gpl-3.0-only', 'gpl-3.0-or-later', 'gsoap-1.3b', 'haskellreport', 'hpnd', 'hpnd-sell-variant', 'ibm-pibs', 'icu', 'ijg', 'imagemagick', 'imatix', 'imlib2', 'info-zip', 'intel', 'intel-acpi', 'interbase-1.0', 'ipa', 'ipl-1.0', 'isc', 'jasper-2.0', 'jpnic', 'json', 'lal-1.2', 'lal-1.3', 'latex2e', 'leptonica', 'lgpl-2.0-only', 'lgpl-2.0-or-later', 'lgpl-2.1-only', 'lgpl-2.1-or-later', 'lgpl-3.0-only', 'lgpl-3.0-or-later', 'lgpllr', 'libpng', 'libpng-2.0', 'libtiff', 'liliq-p-1.1', 'liliq-r-1.1', 'liliq-rplus-1.1', 'linux-openib', 'lpl-1.0', 'lpl-1.02', 'lppl-1.0', 'lppl-1.1', 'lppl-1.2', 'lppl-1.3a', 'lppl-1.3c', 'makeindex', 'miros', 'mit', 'mit-0', 'mit-advertising', 'mit-cmu', 'mit-enna', 'mit-feh', 'mitnfa', 'motosoto', 'mpich2', 'mpl-1.0', 'mpl-1.1', 'mpl-2.0', 'mpl-2.0-no-copyleft-exception', 'ms-pl', 'ms-rl', 'mtll', 'mulanpsl-1.0', 'multics', 'mup', 'nasa-1.3', 'naumen', 'nbpl-1.0', 'ncsa', 'net-snmp', 'netcdf', 'newsletr', 'ngpl', 'nlod-1.0', 'nlpl', 'nokia', 'nosl', 'noweb', 'npl-1.0', 'npl-1.1', 'nposl-3.0', 'nrl', 'ntp', 'occt-pl', 'oclc-2.0', 'odbl-1.0', 'odc-by-1.0', 'ofl-1.0', 'ofl-1.1', 'ogl-canada-2.0', 'ogl-uk-1.0', 'ogl-uk-2.0', 'ogl-uk-3.0', 'ogtsl', 'oldap-1.1', 'oldap-1.2', 'oldap-1.3', 'oldap-1.4', 'oldap-2.0', 'oldap-2.0.1', 'oldap-2.1', 'oldap-2.2', 'oldap-2.2.1', 'oldap-2.2.2', 'oldap-2.3', 'oldap-2.4', 'oldap-2.5', 'oldap-2.6', 'oldap-2.7', 'oldap-2.8', 'oml', 'openssl', 'opl-1.0', 'oset-pl-2.1', 'osl-1.0', 'osl-1.1', 'osl-2.0', 'osl-2.1', 'osl-3.0', 'parity-6.0.0', 'pddl-1.0', 'php-3.0', 'php-3.01', 'plexus', 'postgresql', 'psfrag', 'psutils', 'python-2.0', 'qhull', 'qpl-1.0', 'rdisc', 'rhecos-1.1', 'rpl-1.1', 'rpl-1.5', 'rpsl-1.0', 'rsa-md', 'rscpl', 'ruby', 'sax-pd', 'saxpath', 'scea', 'sendmail', 'sendmail-8.23', 'sgi-b-1.0', 'sgi-b-1.1', 'sgi-b-2.0', 'shl-0.5', 'shl-0.51', 'simpl-2.0', 'sissl', 'sissl-1.2', 'sleepycat', 'smlnj', 'smppl', 'snia', 'spencer-86', 'spencer-94', 'spencer-99', 'spl-1.0', 'ssh-openssh', 'ssh-short', 'sspl-1.0', 'sugarcrm-1.1.3', 'swl', 'tapr-ohl-1.0', 'tcl', 'tcp-wrappers', 'tmate', 'torque-1.1', 'tosl', 'tu-berlin-1.0', 'tu-berlin-2.0', 'ucl-1.0', 'unicode-dfs-2015', 'unicode-dfs-2016', 'unicode-tou', 'unlicense', 'upl-1.0', 'vim', 'vostrom', 'vsl-1.0', 'w3c', 'w3c-19980720', 'w3c-20150513', 'watcom-1.0', 'wsuipa', 'wtfpl', 'x11', 'xerox', 'xfree86-1.1', 'xinetd', 'xnet', 'xpp', 'xskat', 'ypl-1.0', 'ypl-1.1', 'zed', 'zend-2.0', 'zimbra-1.3', 'zimbra-1.4', 'zlib', 'zlib-acknowledgement', 'zpl-1.1', 'zpl-2.0', 'zpl-2.1'];
-const defaultIgnores = ['.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
-const defaultIgnoreGlobs = [];
+const defaultIgnores = ['bjspm/packages/**', '.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
 const panickMsg = 'Something went wrong!';
 const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
 
-for (let ignoreGlob of defaultIgnores) {
-	defaultIgnoreGlobs.push(new Minimatch(ignoreGlob));
-}
-
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
+let tmpToken = null;
 
-if (!fs.existsSync(appDataPath)) {
-	fs.mkdirSync(appDataPath);
+for (let ignoreGlob of defaultIgnores) {
+	ignoreGlobs.push(new Minimatch(ignoreGlob));
 }
-if (!fs.existsSync(appDataPackagesPath)) {
-	fs.mkdirSync(appDataPackagesPath);
-}
+
+mkdirSync(appDataPath);
+mkdirSync(appDataPackagesPath);
 
 let authTokens = {};
 let cmdArgs = process.argv.slice(2);
@@ -70,7 +68,7 @@ function getEmptyPackage() {
 		keywords: null,
 		license: '',
 		username: '',
-		dependencies: {}
+		dependencies: []
 	};
 }
 
@@ -82,7 +80,7 @@ function getDefaultPackage() {
 		keywords: [],
 		license: '',
 		username: '',
-		dependencies: {}
+		dependencies: []
 	};
 }
 
@@ -105,8 +103,11 @@ loadPackage(() => {
 						console.log('This package has an invalid configuration; run "bjspm init" to fix this.');
 						process.exit();
 					}
-					getServerConfig((serverConfig) => {
-						zipPackage((zipPath) => {
+					getServerConfig(serverConfig => {
+						zipPackage(result => {
+							let zipPath = result.zipPath;
+							let fileData = result.fileData;
+							let cleanupCallback = result.cleanupCallback;
 							let uploadType = getPackageType();
 							let tag = '';
 							for (let i = 1; i < cmdArgs.length; i += 2) {
@@ -166,7 +167,7 @@ loadPackage(() => {
 											if (obj.error === 'Authentication failed') {
 												authTokens[package.username] = undefined;
 												getAuthToken(package.username, (authToken) => {
-													uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
+													uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
 												});
 											} else {
 												console.log('Server error: ' + obj.error);
@@ -184,12 +185,12 @@ loadPackage(() => {
 							if (uploadType === 'user') {
 								let authToken = authTokens[package.username];
 								if (authToken !== undefined) {
-									uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
+									uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
 								} else {
 									console.log(credentialsMsg);
 									pollUsername((username) => {
 										getAuthToken(username, (authToken) => {
-											uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
+											uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
 										});
 									}, package.username);
 								}
@@ -197,11 +198,11 @@ loadPackage(() => {
 								console.log(credentialsMsg);
 								pollUsername((username) => {
 									getAuthToken(username, (authToken) => {
-										uploadPackage(zipPath, authToken, uploadType, tag, uploadCallback);
+										uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
 									});
 								});
 							} else {
-								uploadPackage(zipPath, '', uploadType, tag, uploadCallback);
+								uploadPackage(zipPath, fileData, '', uploadType, tag, uploadCallback);
 							}
 						});
 					});
@@ -210,20 +211,20 @@ loadPackage(() => {
 				case 'i':
 				case 'install': {
 					let packageId = cmdArgs[1];
-					let packageBaseId = null;
-					let packageVersion = null;
-					let folder = packagesPath;
-					let absolute = false;
+					let folder = null;
+					let dlType = 'rel';
 					for (let i = 2; i < cmdArgs.length; i += 2) {
 						if (cmdArgs[i] !== undefined) {
 							switch (cmdArgs[i].toLowerCase()) {
 								case '--dir':
 									if (cmdArgs[i + 1] !== undefined) {
 										folder = cmdArgs[i + 1];
-										absolute = true;
 									} else {
 										showCommandHelp('install');
 									}
+									break;
+								case '--abs':
+									dlType = 'abs';
 									break;
 							}
 						}
@@ -232,70 +233,10 @@ loadPackage(() => {
 						console.log('Invalid package identifier');
 						process.exit();
 					}
-					let downloadId = null;
-					if (packageId.indexOf('@') !== -1) {
-						let parts1 = packageId.split('@');
-						let parts2 = parts1[1].split('/');
-						let user = parts2[0];
-						let packageName = parts2[1];
-						packageBaseId = `@${user}/${packageName}`;
-						getPackageVersions(packageBaseId, (versions) => {
-							if (versions.length === 0) {
-								console.log('Could not retrieve package versions from server');
-								process.exit();
-							}
-							getPackageTags(packageBaseId, (tags) => {
-								if (tags.length === 0) {
-									console.log('Could not retrieve package tags from server');
-									process.exit();
-								}
-								if (parts1.length === 2) {
-									downloadId = packageId;
-									packageVersion = tags['latest'];
-								} else {
-									packageVersion = parts1[2];
-									if (isValidPackageTag(packageVersion)) {
-										if (tags[packageVersion] === undefined) {
-											console.log('No such package tag, available tags:');
-											console.log(tags.join(', '));
-											process.exit();
-										}
-										downloadId = `${packageBaseId}@${packageVersion}`;
-										packageVersion = tags[packageVersion];
-									} else if (semverValid(packageVersion)) {
-										let highestMatch = semverMaxSatisfying(versions, packageVersion);
-										if (highestMatch === null) {
-											console.log('Could not find highest version');
-											process.exit();
-										}
-										downloadId = `@${user}/${packageName}@${highestMatch}`;
-									}
-								}
-								let targetPath = absolute ? folder : path.resolve(folder, `@${user}`, `${packageName}`);
-								deleteDirectory(targetPath);
-								downloadPackageChain(downloadId, absolute, targetPath, (filepath) => {
-									package.dependencies[packageBaseId] = `^${packageVersion}`;
-									storePackage();
-
-									console.log(filepath);
-									process.exit();
-								});
-							});
-						});
-					} else {
-						downloadId = packageId;
-						packageBaseId = packageId;
-						let targetPath = path.resolve(folder, packageBaseId);
-						
-						deleteDirectory(targetPath);
-						downloadPackageChain(downloadId, absolute, targetPath, (filepath) => {
-							package.dependencies[packageBaseId] = '';
-							storePackage();
-
-							console.log(filepath);
-							process.exit();
-						});
-					}
+					installPackage(packageId, folder, dlType, (result) => {
+						console.log(result.filepath);
+						process.exit();
+					});
 				}
 					break;
 				case 'access': {
@@ -486,11 +427,18 @@ loadPackage(() => {
 					}
 				}
 					break;
-				case 'test': {
-					console.log(cwdPath);
-					console.log(getSubDirectories(cwdPath));
-					process.exit();
+				case 'api': {
+					if (cmdArgs[1] === undefined) {
+						break;
+					}
+					apiPost({
+						action: cmdArgs[1]
+					}, (obj) => {
+						console.log(obj);
+						process.exit();
+					});
 				}
+					break;
 					break;
 				default:
 					showQuickHelp();
@@ -589,7 +537,8 @@ function getJson(url, callback) {
 			let obj = JSON.parse(body);
 			callback(obj);
 		} catch (e) {
-			console.log(body);
+			console.log('Error', body);
+			console.log(e);
 			process.exit();
 		}
 	});
@@ -615,22 +564,28 @@ function getAccessListForPackage(packageBaseId, user, callback) {
 }
 
 function setPackagePublicity(packageBaseId, publicity, authToken, callback) {
-	apiPost({
-		action: 'SET_PACKAGE_PUBLICITY',
-		authToken: authToken,
-		package: packageBaseId,
-		publicity: publicity
-	}, callback);
+	getTmpToken(() => {
+		apiPost({
+			action: 'SET_PACKAGE_PUBLICITY',
+			authToken: authToken,
+			tmpToken: tmpToken,
+			package: packageBaseId,
+			publicity: publicity
+		}, callback);
+	});
 }
 
 function setUserPermissions(packageBaseId, user, permissions, authToken, callback) {
-	apiPost({
-		action: 'SET_USER_PERMISSIONS',
-		authToken: authToken,
-		user: user,
-		permissions: permissions,
-		package: packageBaseId
-	}, callback);
+	getTmpToken(() => {
+		apiPost({
+			action: 'SET_USER_PERMISSIONS',
+			authToken: authToken,
+			tmpToken: tmpToken,
+			user: user,
+			permissions: permissions,
+			package: packageBaseId
+		}, callback);
+	});
 }
 
 function requestUID(callback) {
@@ -641,14 +596,30 @@ function requestUID(callback) {
 	});
 }
 
-function registerPackageDownload(packageId, callback) {
+function getTmpToken(callback) {
+	if (tmpToken !== null) {
+		callback(tmpToken);
+		return;
+	}
 	apiPost({
-		action: 'REGISTER_PACKAGE_DOWNLOAD',
-		package: packageId
+		action: 'GET_TMP_TOKEN'
 	}, (obj) => {
-		if (callback !== undefined) {
-			callback(obj);
-		}
+		tmpToken = obj.tmpToken;
+		callback(obj.tmpToken);
+	});
+}
+
+function registerPackageDownload(packageId, callback) {
+	getTmpToken(() => {
+		apiPost({
+			action: 'REGISTER_PACKAGE_DOWNLOAD',
+			tmpToken: tmpToken,
+			package: packageId
+		}, (obj) => {
+			if (callback !== undefined) {
+				callback(obj);
+			}
+		});
 	});
 }
 
@@ -673,17 +644,107 @@ function getAppDataPackagePath(packageId) {
 	return filePath;
 }
 
-function downloadPackageChain(packageId, absolute, targetPath, callback) {
-	console.log('pth', targetPath);
-	downloadPackage(packageId, absolute, targetPath, () => {
+function installPackage(packageId, folder, dlType, callback) {
+	if (!isValidPackageInstallId(packageId)) {
+		callback(null);
+		return;
+	}
+	let packageBaseId = null;
+	if (packageId.indexOf('@') !== -1) {
+		let matches = packageId.match(regexInstallUser);
+		let user = matches[1];
+		let packageName = matches[2];
+		let packageVersion = matches[3];
+		packageBaseId = `@${user}/${packageName}`;
+		getPackageVersions(packageBaseId, (versions) => {
+			if (versions.length === 0) {
+				console.log('Could not retrieve package versions from server');
+				process.exit();
+			}
+			getPackageTags(packageBaseId, (tags) => {
+				if (tags.length === 0) {
+					console.log('Could not retrieve package tags from server');
+					process.exit();
+				}
+				if (packageVersion.length === 0) {
+					packageVersion = tags['latest'];
+				}
+				if (isValidPackageTag(packageVersion)) {
+					if (tags[packageVersion] === undefined) {
+						console.log(`Could not install "${packageId}", error:`);
+						console.log('No such package tag, available tags:');
+						console.log(tags.join(', '));
+						process.exit();
+					}
+					packageVersion = tags[packageVersion];
+				} else if (isValidPackageVersionMajor(packageVersion)) {
+					let highestMatch = semverMaxSatisfying(versions, `${packageVersion}.x`);
+					if (highestMatch === null) {
+						console.log(`Could not install "${packageId}", error:`);
+						console.log('Could not find highest version');
+						process.exit();
+					}
+					packageVersion = highestMatch;
+				} else if (!semverValid(packageVersion)) {
+					console.log(`Could not install "${packageId}", error:`);
+					console.log(`Invalid package version identifier: ${packageVersion}`);
+					process.exit();
+				} else {
+					console.log(`Note: only the package's major version will be saved to the dependecies list`);
+				}
+				let versionMajor = semverMajor(packageVersion);
+				let downloadId = `${packageBaseId}@${packageVersion}`;
+				let targetPath;
+				if (folder !== null) {
+					targetPath = path.resolve(folder, `@${user}`, `${packageName}${versionMajor}`);
+				} else {
+					targetPath = path.resolve(packagesPath, `@${user}`, `${packageName}${versionMajor}`);
+					deleteDirectory(targetPath);
+				}
+				downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
+					package.dependencies.push(`@${user}/${packageName}${versionMajor}`);
+					storePackage();
+					callback({ filepath: filepath, version: packageVersion });
+				});
+			});
+		});
+	} else {
+		downloadId = packageId;
+		packageBaseId = packageId;
+		let targetPath;
+		if (folder !== null) {
+			targetPath = path.resolve(folder, packageBaseId);
+		} else {
+			targetPath = path.resolve(packagesPath, packageBaseId);
+			deleteDirectory(targetPath);
+		}
+		downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
+			package.dependencies.push(packageBaseId);
+			storePackage();
+			callback({ filepath: filepath });
+		});
+	}
+}
+
+function downloadPackageChain(packageId, dlType, targetPath, callback) {
+	downloadPackage(packageId, dlType, targetPath, () => {
 		let packageFile = path.resolve(targetPath, 'bjspm', 'package.json');
 		if (fs.existsSync(packageFile)) {
 			loadJsonFile(packageFile, (obj) => {
 				if (obj !== null) {
 					if (obj.dependencies !== undefined) {
-						for (let dependency of dependencies) {
-							console.log(dependency, dependencies[dependency]);
-						}
+						let i = 0;
+						let installNext = () => {
+							if (i === obj.dependencies.length) {
+								callback(targetPath);
+								return;
+							}
+							let dependency = obj.dependencies[i++];
+							installPackage(`${dependency}`, null, dlType, (result) => {
+								installNext();
+							});
+						};
+						installNext();
 					}
 				}
 			});
@@ -693,25 +754,12 @@ function downloadPackageChain(packageId, absolute, targetPath, callback) {
 	});
 }
 
-function getPackageInstallPath(packageBaseId) {
-	if (!fs.existsSync(packagesPath) || !fs.statSync(packagesPath).isDirectory()) {
-		return null;
-	}
-	let dirPaths = getSubDirectories(packagesPath);
-	for (let path of dirPaths) {
-		let files = fs.readdirSync(path);
-		for (let file of files) {
-			if (file === packageBaseId) {
-				return path;
-			}
-		}
-	}
-	return null;
-}
-
 function deleteDirectory(path) {
-	let files = getDirectoryEntries(path);
-	let dirs = getSubDirectories(path);
+	if (!fs.existsSync(path)) {
+		return;
+	}
+	let files = getSubFiles(path);
+	let dirs = getSubDirectories(path).sort((a, b) => b.length - a.length);
 
 	for (let file of files) {
 		fs.unlinkSync(file);
@@ -722,14 +770,14 @@ function deleteDirectory(path) {
 	fs.rmdirSync(path);
 }
 
-function isPackageInCache(packageId){
+function isPackageInCache(packageId) {
 	let zipPath = getAppDataPackagePath(packageId);
 	return fs.existsSync(zipPath);
 }
 
-function downloadPackage(packageId, absolute, targetPath, callback, urlIndex = 0) {
+function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) {
 	let zipPath = getAppDataPackagePath(packageId);
-	mkdirsSync(targetPath);
+	mkdirSync(targetPath);
 	let onDownloaded = () => {
 		console.log('Extracting files from package...');
 		extract(zipPath, { dir: targetPath }).then(() => {
@@ -758,7 +806,7 @@ function downloadPackage(packageId, absolute, targetPath, callback, urlIndex = 0
 				console.log("The package archive could not be downloaded.");
 				process.exit();
 			}
-			let url = urlArray[absolute ? 'abs' : 'rel'];
+			let url = urlArray[dlType];
 			getPackageJson(packageId, (package) => {
 				let prefix = ' -> ';
 				if (urlIndex === 0) {
@@ -800,7 +848,7 @@ function downloadPackage(packageId, absolute, targetPath, callback, urlIndex = 0
 					if (err) {
 						if (!fs.existsSync(zipPath)) {
 							if (urls.length > urlIndex + 1) {
-								downloadPackage(packageId, absolute, targetPath, callback, urlIndex + 1);
+								downloadPackage(packageId, dlType, targetPath, callback, urlIndex + 1);
 							} else {
 								console.log(panickMsg);
 								console.trace();
@@ -834,22 +882,25 @@ function getPackageJson(packageId, callback) {
 	getJson(url, callback);
 }
 
-function uploadPackage(path, authToken, type, tag, callback) {
+function uploadPackage(path, fileData, authToken, type, tag, callback) {
 	console.log('Uploading package...');
-	request.post({
-		url: 'https://bjspm.croncle.com/api.php', formData: {
-			action: 'UPLOAD_PACKAGE',
-			authToken: authToken,
-			package: fs.createReadStream(path),
-			name: package.name,
-			version: package.version,
-			description: package.description,
-			keywords: package.keywords.join(','),
-			license: package.license,
-			type: type,
-			tag: tag
-		}
-	}, callback);
+	getTmpToken(() => {
+		request.post({
+			url: 'https://bjspm.croncle.com/api.php', formData: {
+				action: 'UPLOAD_PACKAGE',
+				authToken: authToken,
+				tmpToken: tmpToken,
+				package: fs.createReadStream(path),
+				name: package.name,
+				version: package.version,
+				description: package.description,
+				keywords: package.keywords.join(','),
+				license: package.license,
+				type: type,
+				tag: tag
+			}
+		}, callback);
+	});
 }
 
 function getValidLicense(str) {
@@ -874,11 +925,11 @@ function isValidUsername(name) {
 }
 
 function isValidPackageTag(tag) {
-	return isString(tag) && !semverValid(tag);
+	return isString(tag) && !semverValid(tag) && !isValidPackageVersionMajor(tag);
 }
 
 function isValidPackageName(name) {
-	return isString(name) && /^[a-z0-9][a-z0-9_\-\.]{0,240}$/.test(name);
+	return isString(name) && regexPackageName.test(name);
 }
 
 function isValidPackageId(id) {
@@ -900,6 +951,10 @@ function isValidPackageInstallId(id) {
 		return false;
 	}
 	return regexInstallUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
+}
+
+function isValidPackageVersionMajor(major) {
+	return isString(major) && regexMajorVersion.test(major);
 }
 
 function isValidPackageVersion(version) {
@@ -946,6 +1001,8 @@ function zipPackage(callback) {
 			process.exit();
 		}
 		loadIgnores(() => {
+			let fileData = [];
+			let totalSize = 0;
 			let zipPath = path + '/archive.zip';
 			var output = fs.createWriteStream(zipPath);
 			var archive = archiver('zip', {
@@ -962,14 +1019,21 @@ function zipPackage(callback) {
 					}
 				}
 				if (skip) {
-					console.log(`Skipping file "${entry.path}"`);
+					console.log(`Skipping ${entry.path}`);
 				} else {
+					let entryStats = fs.statSync(entry.path);
+					totalSize += entryStats.size;
+					fileData.push({
+						path: entry.path,
+						size: entryStats.size
+					});
 					console.log(`Packing ${entry.path}...`);
 					archive.file("./" + entry.path, { name: entry.path });
 				}
 			}
+			fileData['totalSize'] = totalSize;
 			archive.finalize().then(() => {
-				callback(zipPath);
+				callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
 			});
 		});
 	});
@@ -986,6 +1050,22 @@ function getSubDirectories(dir) {
 			results.push(filePath);
 			let subPaths = getSubDirectories(filePath);
 			results = results.concat(subPaths);
+		}
+	}
+	return results;
+}
+
+function getSubFiles(dir) {
+	let results = [];
+	let list = fs.readdirSync(dir);
+
+	for (let fileName of list) {
+		let filePath = path.resolve(dir, fileName);
+		let stat = fs.statSync(filePath);
+		if (stat.isDirectory()) {
+			results = results.concat(getSubFiles(filePath));
+		} else {
+			results.push(filePath);
 		}
 	}
 	return results;
@@ -1037,6 +1117,7 @@ function loadJsonFile(jsonPath, callback, maxSize) {
 				let obj = JSON.parse(data);
 				callback(obj);
 			} catch (e) {
+				console.log(e);
 				callback(null);
 			}
 		});
@@ -1079,7 +1160,13 @@ function loadAuthTokens(callback) {
 }
 
 function loadIgnores(callback) {
-	for (let ignorePath of ignoresPaths) {
+	let i = 0;
+	let loadNext = () => {
+		let ignorePath = ignoresPaths[i++];
+		if (ignorePath === undefined) {
+			callback();
+			return;
+		}
 		if (fs.existsSync(ignorePath)) {
 			fs.readFile(ignorePath, 'utf8', function (err, data) {
 				if (err) {
@@ -1087,7 +1174,7 @@ function loadIgnores(callback) {
 					process.exit();
 				}
 				let _ignores = data.split('\r\n').join('\n').split('\n');
-				ignores = defaultIgnores.concat(_ignores);
+				ignores.push(..._ignores);
 
 				let _ignoreGlobs = [];
 				for (let ignoreGlob of _ignores) {
@@ -1096,13 +1183,20 @@ function loadIgnores(callback) {
 					}
 					_ignoreGlobs.push(new Minimatch(ignoreGlob, { flipNegate: true }));
 				}
-				ignoreGlobs = defaultIgnoreGlobs.concat(_ignoreGlobs);
-				callback();
+				ignoreGlobs.push(..._ignoreGlobs);
+				loadNext();
 			});
-			return;
+		} else {
+			loadNext();
 		}
 	}
-	callback();
+	loadNext();
+}
+
+function mkdirSync(path) {
+	if (!fs.existsSync(path)) {
+		fs.mkdirSync(bjspmPath, { recursive: true });
+	}
 }
 
 function storeAuthTokens() {
@@ -1112,7 +1206,7 @@ function storeAuthTokens() {
 
 function storePackage() {
 	let json = JSON.stringify(package, undefined, 2);
-	mkdirsSync(bjspmPath);
+	mkdirSync(bjspmPath);
 	fs.writeFileSync(packageJsonPath, json, 'utf8');
 }
 
@@ -1158,20 +1252,6 @@ function getAuthToken(username, callback) {
 	}
 }
 
-async function mkdir(path) {
-	return mkdirp(path).then(() => {
-	}, (err) => {
-		console.log(panickMsg, err);
-		process.exit();
-	});
-}
-
-async function mkdirsSync(...paths) {
-	for (let path of paths) {
-		await mkdir(path);
-	}
-}
-
 function initPackage() {
 	console.log(`
 This utility will walk you through creating a package.json file.
@@ -1190,7 +1270,7 @@ Press ^C at any time to quit.
 		readline.question(`Is this OK? (yes) `, (answer) => {
 			let _answer = answer.toLowerCase();
 			if (['', 'y', 'yes'].indexOf(_answer) !== -1) {
-				mkdirsSync(bjspmPath);
+				mkdirSync(bjspmPath);
 				fs.writeFileSync(packageJsonPath, json, 'utf8');
 				process.exit();
 			} else {
