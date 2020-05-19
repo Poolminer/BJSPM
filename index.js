@@ -109,7 +109,7 @@ loadPackage(() => {
 							let fileData = result.fileData;
 							let cleanupCallback = result.cleanupCallback;
 							let uploadType = getPackageType();
-							let tag = '';
+							let tags = [];
 							for (let i = 1; i < cmdArgs.length; i += 2) {
 								if (cmdArgs[i] !== undefined) {
 									switch (cmdArgs[i].toLowerCase()) {
@@ -140,7 +140,7 @@ loadPackage(() => {
 										case '--tag':
 											if (uploadType === 'user') {
 												if (cmdArgs[i + 1] !== undefined) {
-													tag = cmdArgs[i + 1];
+													tags = [cmdArgs[i + 1]];
 													if (!isValidPackageTag(tag)) {
 														console.log('Invalid package tag');
 														process.exit();
@@ -167,7 +167,7 @@ loadPackage(() => {
 											if (obj.error === 'Authentication failed') {
 												authTokens[package.username] = undefined;
 												getAuthToken(package.username, (authToken) => {
-													uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
+													uploadPackage(zipPath, fileData, authToken, uploadType, tags, uploadCallback);
 												});
 											} else {
 												console.log('Server error: ' + obj.error);
@@ -185,12 +185,12 @@ loadPackage(() => {
 							if (uploadType === 'user') {
 								let authToken = authTokens[package.username];
 								if (authToken !== undefined) {
-									uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
+									uploadPackage(zipPath, fileData, authToken, uploadType, tags, uploadCallback);
 								} else {
 									console.log(credentialsMsg);
 									pollUsername((username) => {
 										getAuthToken(username, (authToken) => {
-											uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
+											uploadPackage(zipPath, fileData, authToken, uploadType, tags, uploadCallback);
 										});
 									}, package.username);
 								}
@@ -198,11 +198,11 @@ loadPackage(() => {
 								console.log(credentialsMsg);
 								pollUsername((username) => {
 									getAuthToken(username, (authToken) => {
-										uploadPackage(zipPath, fileData, authToken, uploadType, tag, uploadCallback);
+										uploadPackage(zipPath, fileData, authToken, uploadType, tags, uploadCallback);
 									});
 								});
 							} else {
-								uploadPackage(zipPath, fileData, '', uploadType, tag, uploadCallback);
+								uploadPackage(zipPath, fileData, '', uploadType, tags, uploadCallback);
 							}
 						});
 					});
@@ -233,11 +233,100 @@ loadPackage(() => {
 						console.log('Invalid package identifier');
 						process.exit();
 					}
-					installPackage(packageId, folder, dlType, (result) => {
-						console.log(result.filepath);
-						process.exit();
+					checkPackageAvailability(packageId, (availability) => {
+						installPackage(packageId, folder, dlType, (result) => {
+							console.log(result.filepath);
+							process.exit();
+						});
 					});
 				}
+					break;
+				case 'dist-tag':
+				case 'dist-tags':
+					if (cmdArgs.length < 3) {
+						showCommandHelp('dist-tag');
+					} else {
+						switch (cmdArgs[1]) {
+							case 'add': {
+								if (cmdArgs.length !== 4) {
+									showCommandHelp('dist-tag');
+								}
+								let packageId = cmdArgs[2];
+								let tag = cmdArgs[3];
+								if (!regexUser.test(packageId)) {
+									console.log('Invalid versioned package identifier');
+									process.exit();
+								}
+								if (!isValidPackageTag(tag)) {
+									console.log('Invalid package tag');
+									process.exit();
+								}
+								checkPackageAvailability(packageId, (availability) => {
+									pollUsername((username) => {
+										getAuthToken(username, (authToken) => {
+											setPackageTags(packageId, [tag], authToken, () => {
+												console.log('Tag added successfully');
+												process.exit();
+											});
+										});
+									});
+								});
+							}
+								break;
+							case 'rm': {
+								if (cmdArgs.length !== 4) {
+									showCommandHelp('dist-tag');
+								}
+								let packageId = cmdArgs[2];
+								let tag = cmdArgs[3];
+								if (!regexUser.test(packageId)) {
+									console.log('Invalid versioned package identifier');
+									process.exit();
+								}
+								if (!isValidPackageTag(tag)) {
+									console.log('Invalid package tag');
+									process.exit();
+								}
+								checkPackageAvailability(packageId, (availability) => {
+									pollUsername((username) => {
+										getAuthToken(username, (authToken) => {
+											deletePackageTags(packageId, [tag], authToken, () => {
+												console.log('Tag deleted successfully');
+												process.exit();
+											});
+										});
+									});
+								});
+							}
+								break;
+							case 'ls': {
+								if (cmdArgs.length > 3) {
+									showCommandHelp('dist-tag');
+								}
+								let packageId = cmdArgs[2];
+								if (!regexUserNoVersion.test(packageId)) {
+									console.log('Invalid base package identifier');
+									process.exit();
+								}
+								checkPackageAvailability(packageId, (availability) => {
+									if (availability === 'public') {
+										getPackageTags(packageId, (tags) => {
+											console.log(tags.join(', '));
+										});
+									} else {
+										pollUsername((username) => {
+											getAuthToken(username, (authToken) => {
+												getPackageTags(packageId, (tags) => {
+													console.log(tags.join(', '));
+												}, authToken);
+											});
+										});
+									}
+								});
+							}
+								break;
+						}
+					}
 					break;
 				case 'access': {
 					if (cmdArgs.length === 1) {
@@ -246,7 +335,7 @@ loadPackage(() => {
 						switch (cmdArgs[1]) {
 							case 'public':
 							case 'restricted': {
-								let package;
+								let packageId;
 								let packageType = getPackageType();
 								if (cmdArgs.length === 2) { // local user package
 									if (packageType !== 'user') {
@@ -254,49 +343,51 @@ loadPackage(() => {
 										process.exit();
 										break;
 									}
-									package = '@' + package.username + '/' + package.name;
+									packageId = '@' + package.username + '/' + package.name;
 								} else if (cmdArgs.length === 3) {
-									package = cmdArgs[2];
+									packageId = cmdArgs[2];
 								} else {
 									showCommandHelp('access');
 									break;
 								}
-								if (!isValidPackageBaseId(package)) {
+								if (!isValidPackageBaseId(packageId)) {
 									console.log('Invalid package identifier');
 									process.exit();
 								}
 								let authToken;
 								let engage = () => {
-									setPackagePublicity(package, cmdArgs[1], authToken, () => {
+									setPackagePublicity(packageId, cmdArgs[1], authToken, () => {
 										console.log('Package set to ' + cmdArgs[1]);
 										process.exit();
 									});
 								}
-								if (cmdArgs.length === 2) { // local user package
-									authToken = authTokens[package.username];
-									if (authToken !== undefined) {
-										engage();
+								checkPackageAvailability(packageId, (availability) => {
+									if (cmdArgs.length === 2) { // local user package
+										authToken = authTokens[package.username];
+										if (authToken !== undefined) {
+											engage();
+										} else {
+											pollUsername((username) => {
+												getAuthToken(username, (_authToken) => {
+													authToken = _authToken;
+													engage();
+												});
+											}, package.username);
+										}
 									} else {
+										let username = '';
+										if (regexUserNoVersion.test(packageId)) {
+											let regex = /^@([a-z0-9_]{1,16})/;
+											username = regex.exec(packageId)[1];
+										}
 										pollUsername((username) => {
 											getAuthToken(username, (_authToken) => {
 												authToken = _authToken;
 												engage();
 											});
-										}, package.username);
+										}, username);
 									}
-								} else {
-									let username = '';
-									if (regexUserNoVersion.test(package)) {
-										let regex = /^@([a-z0-9_]{1,16})/;
-										username = regex.exec(package)[1];
-									}
-									pollUsername((username) => {
-										getAuthToken(username, (_authToken) => {
-											authToken = _authToken;
-											engage();
-										});
-									}, username);
-								}
+								});
 							}
 								break;
 							case 'set':
@@ -307,7 +398,7 @@ loadPackage(() => {
 										case 'read-only':
 										case 'read-write': {
 											let user = cmdArgs[3];
-											let package;
+											let packageId;
 											let packageType = getPackageType();
 											if (cmdArgs.length === 4) { // local user package
 												if (packageType !== 'user') {
@@ -315,9 +406,9 @@ loadPackage(() => {
 													process.exit();
 													break;
 												}
-												package = '@' + package.username + '/' + package.name;
+												packageId = '@' + package.username + '/' + package.name;
 											} else if (cmdArgs.length === 5) {
-												package = cmdArgs[4];
+												packageId = cmdArgs[4];
 											} else {
 												showCommandHelp('access');
 												break;
@@ -326,19 +417,21 @@ loadPackage(() => {
 												console.log('Invalid username');
 												process.exit();
 											}
-											if (!isValidPackageBaseId(package)) {
+											if (!isValidPackageBaseId(packageId)) {
 												console.log('Invalid package identifier');
 												process.exit();
 											}
-											console.log(credentialsMsg);
-											pollUsername((username) => {
-												getAuthToken(username, (authToken) => {
-													setUserPermissions(package, user, cmdArgs[2], authToken, () => {
-														console.log('User permissions set');
-														process.exit();
+											checkPackageAvailability(packageId, (availability) => {
+												console.log(credentialsMsg);
+												pollUsername((username) => {
+													getAuthToken(username, (authToken) => {
+														setUserPermissions(packageId, user, cmdArgs[2], authToken, () => {
+															console.log('User permissions set');
+															process.exit();
+														});
 													});
-												});
-											}, cmdArgs.length === 4 ? package.username : '');
+												}, cmdArgs.length === 4 ? package.username : '');
+											});
 										}
 											break;
 										default:
@@ -365,27 +458,43 @@ loadPackage(() => {
 								break;
 							case 'ls-collaborators': {
 								let user;
-								let package;
+								let packageId;
 								let packageType = getPackageType();
 								if (cmdArgs.length > 4) {
 									showCommandHelp('ls-collaborators');
 									break;
 								}
 								if (cmdArgs.length === 2) { // local user package
-									if (packageType !== 'user') {
+									if (packageType === 'user') {
 										console.log('No package specified');
 										process.exit();
 										break;
 									}
-									package = '@' + package.username + '/' + package.name;
+									packageId = '@' + package.username + '/' + package.name;
 								} else {
-									package = cmdArgs[2];
+									packageId = cmdArgs[2];
 									user = cmdArgs.length === 4 ? cmdArgs[3] : '';
 								}
-								getAccessListForPackage(package, user, (obj) => {
-									let json = JSON.stringify(obj, undefined, 2);
-									console.log(json);
-									process.exit();
+								let matches = packageId.match(regexInstallUser);
+								let username = matches !== null ? matches[1] : '';
+								checkPackageAvailability(packageId, (availability) => {
+									if (availability === 'public') {
+										getAccessListForPackage(packageId, user, (obj) => {
+											let json = JSON.stringify(obj, undefined, 2);
+											console.log(json);
+											process.exit();
+										});
+									} else {
+										pollUsername((username) => {
+											getAuthToken(username, (authToken) => {
+												getAccessListForPackage(packageId, user, (obj) => {
+													let json = JSON.stringify(obj, undefined, 2);
+													console.log(json);
+													process.exit();
+												}, authToken);
+											});
+										}, username);
+									}
 								});
 							}
 								break;
@@ -410,6 +519,7 @@ loadPackage(() => {
 						process.exit();
 					} else {
 						switch (cmdArgs[1]) {
+							case 'clean':
 							case 'clear': {
 								for (let filePath of filePaths) {
 									try {
@@ -514,20 +624,21 @@ function apiPost(formData, callback) {
 		try {
 			let obj = JSON.parse(body);
 			if (obj.error) {
-				console.log(obj.error);
+				console.log('ERROR', obj.error);
 				process.exit();
 			}
 			callback(obj);
 		} catch (e) {
-			console.log(body);
+			console.log(e);
 			process.exit();
 		}
 	});
 }
 
-function getJson(url, callback) {
+function getJson(url, callback, authToken = '') {
 	request.get({
-		url: url
+		url: url,
+		authToken: authToken
 	}, (err, httpResponse, body) => {
 		if (err) {
 			console.log(panickMsg, err);
@@ -544,6 +655,34 @@ function getJson(url, callback) {
 	});
 }
 
+function getPackageAvailability(packageBaseId, callback) {
+	apiPost({
+		action: 'GET_PACKAGE_AVAILABILITY',
+		package: packageBaseId,
+	}, (obj) => {
+		callback(obj.availability);
+	});
+}
+
+function checkPackageAvailability(packageBaseId, callback) {
+	getPackageAvailability(packageBaseId, (availability) => {
+		switch (availability) {
+			case 'public':
+				callback('public');
+				break;
+			case 'private':
+				callback('private');
+				break;
+			case 'nonexistent':
+				console.log('Error: package does not exist');
+				process.exit();
+			case 'deleted':
+				console.log('Error: this package has been deleted');
+				process.exit();
+		}
+	});
+}
+
 function getAccessListForUser(user, callback) {
 	apiPost({
 		action: 'GET_PACKAGE_ACCESS_LIST_USER',
@@ -553,9 +692,10 @@ function getAccessListForUser(user, callback) {
 	});
 }
 
-function getAccessListForPackage(packageBaseId, user, callback) {
+function getAccessListForPackage(packageBaseId, user, callback, authToken = '') {
 	apiPost({
 		action: 'GET_PACKAGE_ACCESS_LIST',
+		authToken: authToken,
 		package: packageBaseId,
 		user: user
 	}, (obj) => {
@@ -588,11 +728,27 @@ function setUserPermissions(packageBaseId, user, permissions, authToken, callbac
 	});
 }
 
-function requestUID(callback) {
-	apiPost({
-		action: 'GET_NEXT_UID'
-	}, (obj) => {
-		callback(obj.uid);
+function setPackageTags(packageId, tags, authToken, callback) {
+	getTmpToken(() => {
+		apiPost({
+			action: 'SET_PACKAGE_TAGS',
+			authToken: authToken,
+			tmpToken: tmpToken,
+			package: packageId,
+			tags: JSON.stringify(tags)
+		}, callback);
+	});
+}
+
+function deletePackageTags(packageId, tags, authToken, callback) {
+	getTmpToken(() => {
+		apiPost({
+			action: 'DELETE_PACKAGE_TAGS',
+			authToken: authToken,
+			tmpToken: tmpToken,
+			package: packageId,
+			tags: JSON.stringify(tags)
+		}, callback);
 	});
 }
 
@@ -867,9 +1023,9 @@ function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) 
 	}
 }
 
-function getPackageTags(packageId, callback) {
+function getPackageTags(packageId, callback, authToken) {
 	let url = webPackagesPath + packageId + '?tags';
-	getJson(url, callback);
+	getJson(url, callback, authToken);
 }
 
 function getPackageVersions(packageId, callback) {
@@ -882,7 +1038,7 @@ function getPackageJson(packageId, callback) {
 	getJson(url, callback);
 }
 
-function uploadPackage(path, fileData, authToken, type, tag, callback) {
+function uploadPackage(path, fileData, authToken, type, tags, callback) {
 	console.log('Uploading package...');
 	getTmpToken(() => {
 		request.post({
@@ -891,13 +1047,14 @@ function uploadPackage(path, fileData, authToken, type, tag, callback) {
 				authToken: authToken,
 				tmpToken: tmpToken,
 				package: fs.createReadStream(path),
+				username: package.username,
 				name: package.name,
 				version: package.version,
 				description: package.description,
 				keywords: package.keywords.join(','),
 				license: package.license,
 				type: type,
-				tag: tag
+				tags: JSON.stringify(tags)
 			}
 		}, callback);
 	});
@@ -925,7 +1082,7 @@ function isValidUsername(name) {
 }
 
 function isValidPackageTag(tag) {
-	return isString(tag) && !semverValid(tag) && !isValidPackageVersionMajor(tag);
+	return isString(tag) && tag.length < 256 && !semverValid(tag) && !isValidPackageVersionMajor(tag);
 }
 
 function isValidPackageName(name) {
