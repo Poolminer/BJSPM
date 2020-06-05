@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const crypto = require('crypto');
 const archiver = require('archiver');
 const tmp = require('tmp');
 const request = require('request');
@@ -45,6 +46,7 @@ const licencesLowerCase = ['', '0bsd', 'aal', 'abstyles', 'adobe-2006', 'adobe-g
 const defaultIgnores = ['bjspm/packages/**', '.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
 const panickMsg = 'Something went wrong!';
 const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
+const checksumHashFunction = 'sha256';
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
@@ -549,6 +551,10 @@ loadPackage(() => {
 					});
 				}
 					break;
+				case 'test':
+					getFileChecksum('C:\\Users\\root\\Downloads\\BabylonJS Editor Setup 4.0.0-beta.0.exe', 'sha256', (checksum) => {
+						console.log(checksum);
+					});
 					break;
 				default:
 					showQuickHelp();
@@ -629,7 +635,8 @@ function apiPost(formData, callback) {
 			}
 			callback(obj);
 		} catch (e) {
-			console.log(e);
+			//console.log(e);
+			console.log(body);
 			process.exit();
 		}
 	});
@@ -794,6 +801,15 @@ function getPackageDownloadUrls(packageId, callback) {
 	});
 }
 
+function getPackageChecksums(packageId, callback) {
+	apiPost({
+		action: 'GET_PACKAGE_CHECKSUMS',
+		package: packageId
+	}, (obj) => {
+		callback(obj.checksums);
+	});
+}
+
 function getAppDataPackagePath(packageId) {
 	let fileName = packageId.replace('/', '@');
 	let filePath = appDataPackagesPath + fileName + '.zip';
@@ -845,7 +861,7 @@ function installPackage(packageId, folder, dlType, callback) {
 					console.log(`Could not install "${packageId}", error:`);
 					console.log(`Invalid package version identifier: ${packageVersion}`);
 					process.exit();
-				} else {
+				} else if (matches[3].length !== 0) {
 					console.log(`Note: only the package's major version will be saved to the dependecies list`);
 				}
 				let versionMajor = semverMajor(packageVersion);
@@ -858,8 +874,11 @@ function installPackage(packageId, folder, dlType, callback) {
 					deleteDirectory(targetPath);
 				}
 				downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
-					package.dependencies.push(`@${user}/${packageName}${versionMajor}`);
-					storePackage();
+					let dependency = `@${user}/${packageName}${versionMajor}`;
+					if (package.dependencies.indexOf(dependency) === -1) {
+						package.dependencies.push(dependency);
+						storePackage();
+					}
 					callback({ filepath: filepath, version: packageVersion });
 				});
 			});
@@ -875,8 +894,10 @@ function installPackage(packageId, folder, dlType, callback) {
 			deleteDirectory(targetPath);
 		}
 		downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
-			package.dependencies.push(packageBaseId);
-			storePackage();
+			if (package.dependencies.indexOf(packageBaseId) === -1) {
+				package.dependencies.push(packageBaseId);
+				storePackage();
+			}
 			callback({ filepath: filepath });
 		});
 	}
@@ -934,93 +955,125 @@ function isPackageInCache(packageId) {
 function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) {
 	let zipPath = getAppDataPackagePath(packageId);
 	mkdirSync(targetPath);
-	let onDownloaded = () => {
-		console.log('Extracting files from package...');
-		extract(zipPath, { dir: targetPath }).then(() => {
-			// fs.unlink(zipPath, function (err) {
-			// 	if (err) {
-			// 		console.log(panickMsg);
-			// 		console.trace();
-			// 		process.exit();
-			// 	}
-			// 	callback(targetPath);
-			// });
-			callback(targetPath);
-		}, (err) => {
-			console.log(panickMsg);
-			console.trace();
-			process.exit();
-		});
-	};
-	if (fs.existsSync(zipPath)) {
-		console.log(`Package "${packageId}" found in cache`);
-		onDownloaded();
-	} else {
-		getPackageDownloadUrls(packageId, (urls) => {
-			let urlArray = urls[urlIndex];
-			if (urlArray === undefined) {
-				console.log("The package archive could not be downloaded.");
-				process.exit();
-			}
-			let url = urlArray[dlType];
-			getPackageJson(packageId, (package) => {
-				let prefix = ' -> ';
-				if (urlIndex === 0) {
-					console.log(`Downloading package "${packageId}"`);
-					if (package.files.length > 0) {
-						console.log(prefix + packageId + '/' + package.files[0].path);
-					}
-				}
-				let downloadIndex = -1;
-				let rawTotalSize = 0;
-				for (let file of package.files) {
-					rawTotalSize += file.size;
-				}
-				if (rawTotalSize === 0) {
-					let accumulatedSize = 0;
-					for (let file of package.files) {
-						accumulatedSize += 1;
-						file.atSizePercentage = accumulatedSize / files.length;
-					}
-				} else {
-					let accumulatedSize = 0;
-					for (let file of package.files) {
-						accumulatedSize += file.size;
-						file.atSizePercentage = accumulatedSize / rawTotalSize;
-					}
-				}
-				download(url, zipPath, (status) => {
-					for (let i = 0; i < package.files.length; i++) {
-						let file = package.files[i];
-						let nextFile = package.files[i + 1];
-						if (i > downloadIndex && status.percentage >= file.atSizePercentage) {
-							if (nextFile !== undefined) {
-								console.log(prefix + packageId + '/' + nextFile.path);
-							}
-							downloadIndex++;
-						}
-					}
+
+	getPackageChecksums(packageId, (checksums) => {
+		let onDownloaded = (checkIntegrity) => {
+			let onIntegrityCheckOK = () => {
+				console.log('Extracting files from package...');
+				extract(zipPath, { dir: targetPath }).then(() => {
+					// fs.unlink(zipPath, function (err) {
+					// 	if (err) {
+					// 		console.log(panickMsg);
+					// 		console.trace();
+					// 		process.exit();
+					// 	}
+					// 	callback(targetPath);
+					// });
+					callback(targetPath);
 				}, (err) => {
-					if (err) {
-						if (!fs.existsSync(zipPath)) {
-							if (urls.length > urlIndex + 1) {
-								downloadPackage(packageId, dlType, targetPath, callback, urlIndex + 1);
-							} else {
-								console.log(panickMsg);
-								console.trace();
-								process.exit();
-							}
-						}
+					console.log(panickMsg);
+					console.trace();
+					process.exit();
+				});
+			};
+			if(checkIntegrity){
+				console.log(`Verifying package integrity`);
+				getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
+					if(checksum !== checksums[dlType][checksumHashFunction]){
+						console.log(`Package integrity check failed`);
+						console.log(`Deleting package`);
+						fs.unlinkSync(zipPath);
+						console.log(`Aborting`);
+						process.exit();
 					} else {
-						if (urlArray['regDl']) {
-							registerPackageDownload(packageId);
-						}
-						onDownloaded();
+						onIntegrityCheckOK();
 					}
 				});
+			} else {
+				onIntegrityCheckOK();
+			}
+		};
+		if (fs.existsSync(zipPath)) {
+			console.log(`Package "${packageId}" found in cache`);
+			console.log(`Verifying package integrity`);
+			getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
+				if(checksum !== checksums[dlType][checksumHashFunction]){
+					console.log(`Package integrity check failed`);
+					console.log(`Deleting package`);
+					fs.unlinkSync(zipPath);
+					console.log(`Downloading package`);
+					downloadPackage(packageId, dlType, targetPath, callback, urlIndex);
+				} else {
+					onDownloaded(false);
+				}
 			});
-		});
-	}
+		} else {
+			getPackageDownloadUrls(packageId, (urls) => {
+				let urlArray = urls[urlIndex];
+				if (urlArray === undefined) {
+					console.log("The package archive could not be downloaded.");
+					process.exit();
+				}
+				let url = urlArray[dlType];
+				getPackageJson(packageId, (package) => {
+					let prefix = ' -> ';
+					if (urlIndex === 0) {
+						console.log(`Downloading package "${packageId}"`);
+						if (package.files.length > 0) {
+							console.log(prefix + packageId + '/' + package.files[0].path);
+						}
+					}
+					let downloadIndex = -1;
+					let rawTotalSize = 0;
+					for (let file of package.files) {
+						rawTotalSize += file.size;
+					}
+					if (rawTotalSize === 0) {
+						let accumulatedSize = 0;
+						for (let file of package.files) {
+							accumulatedSize += 1;
+							file.atSizePercentage = accumulatedSize / files.length;
+						}
+					} else {
+						let accumulatedSize = 0;
+						for (let file of package.files) {
+							accumulatedSize += file.size;
+							file.atSizePercentage = accumulatedSize / rawTotalSize;
+						}
+					}
+					download(url, zipPath, (status) => {
+						for (let i = 0; i < package.files.length; i++) {
+							let file = package.files[i];
+							let nextFile = package.files[i + 1];
+							if (i > downloadIndex && status.percentage >= file.atSizePercentage) {
+								if (nextFile !== undefined) {
+									console.log(prefix + packageId + '/' + nextFile.path);
+								}
+								downloadIndex++;
+							}
+						}
+					}, (err) => {
+						if (err) {
+							if (!fs.existsSync(zipPath)) {
+								if (urls.length > urlIndex + 1) {
+									downloadPackage(packageId, dlType, targetPath, callback, urlIndex + 1);
+								} else {
+									console.log(panickMsg);
+									console.trace();
+									process.exit();
+								}
+							}
+						} else {
+							if (urlArray['regDl']) {
+								registerPackageDownload(packageId);
+							}
+							onDownloaded(true);
+						}
+					});
+				});
+			});
+		}
+	});
 }
 
 function getPackageTags(packageId, callback, authToken) {
@@ -1058,6 +1111,24 @@ function uploadPackage(path, fileData, authToken, type, tags, callback) {
 			}
 		}, callback);
 	});
+}
+
+function getFileChecksum(path, algorithm, callback) {
+	try {
+		let hash = crypto.createHash(algorithm);
+		let stream = fs.createReadStream(path);
+
+		stream.on('data', function (data) {
+			hash.update(data, 'utf8');
+		})
+
+		stream.on('end', function () {
+			callback(hash.digest('hex'));
+		});
+	} catch (e) {
+		console.log(e);
+		process.exit();
+	}
 }
 
 function getValidLicense(str) {
@@ -1250,7 +1321,7 @@ function getDirectoryEntries(dir, relDir = '') {
 }
 
 function getPackageType() {
-	if (package.name.length !== 0 && package.version.length !== 0) { // user package
+	if (package.name.length !== 0 && package.version.length !== 0 && package.username.length !== 0) { // user package
 		return 'user';
 	} else if (package.name.length !== 0) { // named standalone package
 		return 'named';
@@ -1440,17 +1511,20 @@ Press ^C at any time to quit.
 	let descriptionSet = false;
 	let licenseSet = false;
 	let usernameSet = false;
+	let packageNameSet = false;
 	let askQuestion = () => {
-		if (newPackage.name.length === 0) {
+		if (!packageNameSet) {
 			let hasDefault = package.name.length !== 0 && isValidPackageName(package.name);
 			readline.question(`package name: ${hasDefault ? `(${package.name}) ` : ''}`, (name) => {
 				name = name.toLowerCase();
 				if (hasDefault && name.length === 0) {
 					newPackage.name = package.name;
+					packageNameSet = true;
 					console.log();
 				} else {
-					if (isValidPackageName(name)) {
+					if (name.length === 0 || isValidPackageName(name)) {
 						newPackage.name = name;
+						packageNameSet = true;
 						console.log();
 					} else {
 						console.log('Invalid package name\n');
