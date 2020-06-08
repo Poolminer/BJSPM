@@ -320,21 +320,62 @@ loadAppConfig(() => {
 						break;
 					case 'uninstall': {
 						let packageInstallId = cmdArgs[1];
-						if(packageInstallId === undefined){
-							if(package.dependencies.length !== 0){
-								deleteDirectory(packagesPath);
-								console.log(`Package uninstalled`);
+						if (packageInstallId === undefined) {
+							if (fs.existsSync(packagesPath)) {
+								if (deleteDirectory(packagesPath)) {
+									console.log(`Package uninstalled`);
+									process.exit();
+								} else {
+									console.log(`Could not uninstall package`);
+									process.exit();
+								}
+							} else {
+								console.log(`Package not installed`);
 								process.exit();
 							}
 						}
-						if(!isValidPackageInstallId(packageInstallId)){
+						if (!isValidPackageInstallId(packageInstallId)) {
 							console.log(`Invalid package identifier`);
 							process.exit();
 						}
-						if(package.dependencies.indexOf(packageInstallId) === -1){
+						let installDir = getInstallDirFromInstallId(packageInstallId);
+						if (package.dependencies.indexOf(packageInstallId) === -1 || !fs.existsSync(installDir)) {
 							console.log(`Package not installed`);
 							process.exit();
 						}
+						getDependencies(package, (dependencies) => {
+							let uninstall = (id) => {
+								let dependency = dependencies[id];
+								if (dependency.refCount === 0) {
+									return;
+								}
+								if (--dependency.refCount === 0) {
+									deleteDirectory(dependency.dir);
+									if (dependency.package !== null) {
+										if (dependency.isUSerPackage) {
+											let deleteDir = true;
+											for (let _dependencyId of dependency.package.dependencies) {
+												let _dependency = dependencies[_dependencyId];
+												if (_dependency.refCount !== 0 && _dependency.package !== null && _dependency.package.username === dependency.package.username) {
+													deleteDir = false;
+													break;
+												}
+											}
+											if (deleteDir) {
+												let dir = path.resolve(dependency.dir, '..');
+												deleteDirectory(dir);
+											}
+										}
+										for (let _dependency of dependency.package.dependencies) {
+											uninstall(_dependency);
+										}
+									}
+								}
+							};
+							uninstall(packageInstallId);
+							console.log(`Package uninstalled`);
+							process.exit();
+						});
 					}
 						break;
 					case 'dist-tag':
@@ -975,25 +1016,38 @@ function getPackageFromInstallId(installId, callback) {
 	}
 }
 
-function getDependencies(package, dependencies = []){
-	for(let dependency of package.dependencies){
-		if(dependencies[dependency] !== undefined){
+function getDependencies(package, callback, dependencies = []) {
+	let index = 0;
+	let iterate = () => {
+		let dependency = package.dependencies[index++];
+		if (dependency === undefined) {
+			callback(dependencies);
+			return;
+		}
+		if (dependencies[dependency] !== undefined) {
 			dependencies[dependency].refCount++;
-			continue;
+			iterate();
+		} else {
+			getPackageFromInstallId(dependency, (pk) => {
+				let dependencyObj = {
+					dir: getInstallDirFromInstallId(dependency),
+					package: pk,
+					isUSerPackage: dependency.indexOf('@') !== -1,
+					refCount: 1
+				}
+				dependencies[dependency] = dependencyObj;
+				dependencies.push(dependencyObj);
+				if (pk !== null) {
+					getDependencies(pk, () => {
+						iterate();
+					}, dependencies);
+				} else {
+					iterate();
+				}
+			});
 		}
-		let pk = getPackageFromInstallId(dependency);
-		if(pk !== null){
-			let dependencyObj = {
-				dir: getInstallDirFromInstallId(dependency),
-				package: pk,
-				refCount: 1
-			}
-			dependencies[dependency] = dependencyObj;
-			dependencies.push(dependencyObj);
-			getDependencies(pk, dependencies);
-		}
-	}
-	return dependencies;
+	};
+	iterate();
 }
 
 function installPackage(packageId, folder, dlType, callback, force = false, update = false) {
@@ -1131,7 +1185,7 @@ function downloadPackageChain(packageId, dlType, targetPath, callback, force = f
 
 function deleteDirectory(path) {
 	if (!fs.existsSync(path)) {
-		return;
+		return false;
 	}
 	let files = getSubFiles(path);
 	let dirs = getSubDirectories(path).sort((a, b) => b.length - a.length);
@@ -1143,6 +1197,7 @@ function deleteDirectory(path) {
 		fs.rmdirSync(dir);
 	}
 	fs.rmdirSync(path);
+	return true;
 }
 
 function isPackageInCache(packageId) {
