@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const archiver = require('archiver');
 const tmp = require('tmp');
 const request = require('request');
+const rimraf = require('rimraf');
 const getAppDataPath = require("appdata-path");
 const extract = require('extract-zip');
 const filesize = require('filesize');
@@ -277,12 +278,20 @@ loadAppConfig(() => {
 						let installIds = [];
 						let force = false;
 						let update = cmdArgs[0] === 'update';
+						let packageType = null;
 
 						if (packageId === undefined || packageId.startsWith('-')) {
 							installIds = package.dependencies;
 							argOffset = 1;
 						} else {
 							installIds.push(packageId);
+							if(packageId.indexOf('@') !== -1){
+								packageType = 'user';
+							} else if(packageId.indexOf('_') !== -1){
+								packageType = 'named';
+							} else {
+								packageType = 'unnamed';
+							}
 						}
 						for (let i = argOffset; i < cmdArgs.length; i += 2) {
 							if (cmdArgs[i] !== undefined) {
@@ -310,72 +319,145 @@ loadAppConfig(() => {
 								process.exit();
 							}
 							checkPackageAvailability(installId, (availability) => {
-								installPackage(installId, folder, dlType, (result) => {
-									console.log('Installed');
-									process.exit();
-								}, force, update);
+								let install = () => {
+									installPackage(installId, folder, dlType, (result) => {
+										console.log('Installed');
+										process.exit();
+									}, true, force, update);
+								};
+								if(packageType === 'unnamed'){ // If so, installIds will be [packageId]
+									getPackageSID(installId, (sid) => {
+										installId = getMajorInstallId(sid);
+										install();
+									});
+								} else {
+									install();
+								}
 							});
 						}
 					}
 						break;
 					case 'uninstall': {
-						let packageInstallId = cmdArgs[1];
-						if (packageInstallId === undefined) {
+						let packageId = cmdArgs[1];
+						let flag = cmdArgs[2];
+						let save = false;
+						if(packageId === '--save'){
+							packageId = undefined;
+						}
+						if(flag === '--save'){
+							save = true;
+						}
+						if (packageId === undefined) {
 							if (fs.existsSync(packagesPath)) {
-								if (deleteDirectory(packagesPath)) {
-									console.log(`Package uninstalled`);
-									process.exit();
-								} else {
-									console.log(`Could not uninstall package`);
-									process.exit();
-								}
+								deleteDirectory(packagesPath, (err) => {
+									if(err){
+										console.log(`Could not uninstall package`);
+										process.exit();
+									} else {
+										console.log(`Package uninstalled`);
+										process.exit();
+									}
+								});
 							} else {
 								console.log(`Package not installed`);
 								process.exit();
 							}
+							break;
 						}
-						if (!isValidPackageInstallId(packageInstallId)) {
+						if (!isValidPackageInstallId(packageId)) {
 							console.log(`Invalid package identifier`);
 							process.exit();
 						}
-						let installDir = getInstallDirFromInstallId(packageInstallId);
-						if (package.dependencies.indexOf(packageInstallId) === -1 || !fs.existsSync(installDir)) {
-							console.log(`Package not installed`);
-							process.exit();
+						let packageType = null;
+						if(packageId.indexOf('@') !== -1){
+							packageType = 'user';
+						} else if(packageId.indexOf('_') !== -1){
+							packageType = 'named';
+						} else {
+							packageType = 'unnamed';
 						}
-						getDependencies(package, (dependencies) => {
-							let uninstall = (id) => {
-								let dependency = dependencies[id];
-								if (dependency.refCount === 0) {
-									return;
-								}
-								if (--dependency.refCount === 0) {
-									deleteDirectory(dependency.dir);
-									if (dependency.package !== null) {
-										if (dependency.isUSerPackage) {
-											let deleteDir = true;
-											for (let _dependencyId of dependency.package.dependencies) {
-												let _dependency = dependencies[_dependencyId];
-												if (_dependency.refCount !== 0 && _dependency.package !== null && _dependency.package.username === dependency.package.username) {
-													deleteDir = false;
-													break;
-												}
-											}
-											if (deleteDir) {
-												let dir = path.resolve(dependency.dir, '..');
-												deleteDirectory(dir);
-											}
-										}
-										for (let _dependency of dependency.package.dependencies) {
-											uninstall(_dependency);
-										}
+						let proceed = () => {
+							let installDir = getInstallDirFromInstallId(packageId);
+							if (package.dependencies.indexOf(packageId) === -1 || !fs.existsSync(installDir)) {
+								console.log(`Package not installed: ${packageId}`);
+								process.exit();
+							}
+							getDependencies(package, (dependencies) => {
+								let uninstall = (id, callback) => {
+									let dependency = dependencies[id];
+									if (dependency.refCount === 0) {
+										callback();
+										return;
 									}
-								}
-							};
-							uninstall(packageInstallId);
-							console.log(`Package uninstalled`);
-							process.exit();
-						});
+									if (--dependency.refCount === 0) {
+										deleteDirectory(dependency.dir, (err) => {
+											if(err){
+												console.log(panickMsg, err);
+												process.exit();
+											}
+											if (dependency.package !== null) { // Possibly sub-dependencies to uninstall
+												let uninstallSubDependencies = () => {
+													if(dependency.package.dependencies.length === 0){ // No sub-dependencies
+														callback();
+														return;
+													}
+													let uninstalled = 0;
+													for (let _dependency of dependency.package.dependencies) {
+														uninstall(_dependency, () => {
+															if(++uninstalled === dependency.package.dependencies.length){ // All sub-dependencies have been uninstalled
+																callback();
+															}
+														});
+													}
+												};
+												if (dependency.isUSerPackage) {
+													/* Remove @user directory if this was the last package of @user */
+													let deleteDir = true;
+													for (let _dependencyId of dependency.package.dependencies) {
+														let _dependency = dependencies[_dependencyId];
+														if (_dependency.refCount !== 0 && _dependency.package !== null && _dependency.package.username === dependency.package.username) {
+															deleteDir = false;
+															break;
+														}
+													}
+													if (deleteDir) {
+														let dir = path.resolve(dependency.dir, '..');
+														deleteDirectory(dir, (err) => {
+															if(err){
+																console.log(panickMsg, err);
+																process.exit();
+															}
+															// @user directory deleted
+															uninstallSubDependencies();
+														});
+													} else { // @user directory not deleted, it has other packages in it
+														uninstallSubDependencies();
+													}
+												} else { // Not a user package, so no parent directory to possibly delete
+													uninstallSubDependencies();
+												}
+											} else { // No package file, so no sub-dependencies to uninstall
+												callback();
+											}
+										});
+									} else {
+										callback();
+									}
+								};
+								uninstall(packageId, () => {
+									console.log(`Package uninstalled`);
+									process.exit();
+								});
+							});
+						};
+						if(packageType === 'unnamed'){
+							getPackageSID(packageId, (sid) => {
+								packageId = getMajorInstallId(sid);
+								proceed();
+							});
+						} else {
+							proceed();
+						}
 					}
 						break;
 					case 'dist-tag':
@@ -981,6 +1063,15 @@ function getPackageChecksums(packageId, callback) {
 	});
 }
 
+function getPackageSID(hid, callback){
+	apiPost({
+		action: 'GET_PACKAGE_SID_FROM_HID',
+		hid: hid
+	}, (obj) => {
+		callback(obj.sid);
+	});
+}
+
 function getAppDataPackagePath(packageId) {
 	let fileName = packageId.replace('/', '@');
 	let filePath = path.resolve(appConfig.packageCachePath, fileName + '.zip');
@@ -989,6 +1080,18 @@ function getAppDataPackagePath(packageId) {
 
 function getUserPackageBaseId() {
 	return `@${package.username}/${package.name}@${package.version}`;
+}
+
+function getMajorInstallId(installId){
+	if(installId.indexOf('@') != -1){
+		let split = installId.split('@');
+		let bsid = split[1];
+		let version = split[2];
+		let major = semverMajor(version);
+		return `@${ bsid }${ major }`;
+	} else {
+		return installId;
+	}
 }
 
 function getInstallDirFromInstallId(installId) {
@@ -1050,7 +1153,7 @@ function getDependencies(package, callback, dependencies = []) {
 	iterate();
 }
 
-function installPackage(packageId, folder, dlType, callback, force = false, update = false) {
+function installPackage(packageId, folder, dlType, callback, save = false, force = false, update = false) {
 	if (!isValidPackageInstallId(packageId)) {
 		callback(null);
 		return;
@@ -1104,19 +1207,28 @@ function installPackage(packageId, folder, dlType, callback, force = false, upda
 					let proceed = () => {
 						let downloadId = `${packageBaseId}@${packageVersion}`;
 						let targetPath;
+						let download = () => {
+							downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
+								if (save && package.dependencies.indexOf(dependency) === -1) {
+									package.dependencies.push(dependency);
+									storePackage();
+								}
+								callback({ filepath: filepath, version: packageVersion });
+							}, force, update);
+						};
 						if (folder !== null) {
 							targetPath = path.resolve(folder, `@${user}`, `${packageName}${versionMajor}`);
+							download();
 						} else {
 							targetPath = path.resolve(packagesPath, `@${user}`, `${packageName}${versionMajor}`);
-							deleteDirectory(targetPath);
+							deleteDirectory(targetPath, (err) => {
+								if(err){
+									console.log(panickMsg, err);
+									process.exit();
+								}
+								download();
+							});
 						}
-						downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
-							if (package.dependencies.indexOf(dependency) === -1) {
-								package.dependencies.push(dependency);
-								storePackage();
-							}
-							callback({ filepath: filepath, version: packageVersion });
-						}, force, update);
 					};
 					if (pk === null) {
 						proceed();
@@ -1142,16 +1254,26 @@ function installPackage(packageId, folder, dlType, callback, force = false, upda
 			callback(null);
 			return;
 		}
+		let download = () => {
+			downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
+				if (save && package.dependencies.indexOf(packageBaseId) === -1) {
+					package.dependencies.push(packageBaseId);
+					storePackage();
+				}
+				callback({ filepath: filepath });
+			}, force, update);
+		};
 		if (folder === null) {
-			deleteDirectory(targetPath);
+			deleteDirectory(targetPath, (err) => {
+				if(err){
+					console.log(panickMsg, err);
+					process.exit();
+				}
+				download();
+			});
+		} else {
+			download();
 		}
-		downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
-			if (package.dependencies.indexOf(packageBaseId) === -1) {
-				package.dependencies.push(packageBaseId);
-				storePackage();
-			}
-			callback({ filepath: filepath });
-		}, force, update);
 	}
 }
 
@@ -1171,7 +1293,7 @@ function downloadPackageChain(packageId, dlType, targetPath, callback, force = f
 							let dependency = obj.dependencies[i++];
 							installPackage(`${dependency}`, null, dlType, (result) => {
 								installNext();
-							}, force, update);
+							}, false, force, update);
 						};
 						installNext();
 					}
@@ -1183,21 +1305,25 @@ function downloadPackageChain(packageId, dlType, targetPath, callback, force = f
 	});
 }
 
-function deleteDirectory(path) {
-	if (!fs.existsSync(path)) {
-		return false;
-	}
-	let files = getSubFiles(path);
-	let dirs = getSubDirectories(path).sort((a, b) => b.length - a.length);
+// function deleteDirectory(path) {
+// 	if (!fs.existsSync(path)) {
+// 		return false;
+// 	}
+// 	let files = getSubFiles(path);
+// 	let dirs = getSubDirectories(path).sort((a, b) => b.length - a.length);
 
-	for (let file of files) {
-		fs.unlinkSync(file);
-	}
-	for (let dir of dirs) {
-		fs.rmdirSync(dir);
-	}
-	fs.rmdirSync(path);
-	return true;
+// 	for (let file of files) {
+// 		fs.unlinkSync(file);
+// 	}
+// 	for (let dir of dirs) {
+// 		fs.rmdirSync(dir);
+// 	}
+// 	fs.rmdirSync(path);
+// 	return true;
+// }
+
+function deleteDirectory(path, callback) {
+	rimraf(path, { disableGlob: true }, callback);
 }
 
 function isPackageInCache(packageId) {
@@ -1274,7 +1400,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) 
 					if (urlIndex === 0) {
 						console.log(`Downloading package "${packageId}"`);
 						if (package.files.length > 0) {
-							console.log(prefix + packageId + '/' + package.files[0].path);
+							console.log(prefix + package.files[0].path);
 						}
 					}
 					let downloadIndex = -1;
@@ -1301,7 +1427,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) 
 							let nextFile = package.files[i + 1];
 							if (i > downloadIndex && status.percentage >= file.atSizePercentage) {
 								if (nextFile !== undefined) {
-									console.log(prefix + packageId + '/' + nextFile.path);
+									console.log(prefix + nextFile.path);
 								}
 								downloadIndex++;
 							}
