@@ -248,7 +248,7 @@ loadAppConfig(() => {
 								console.log('No package specified');
 								process.exit();
 							}
-							packageId = getUserPackageBaseId();
+							packageId = getUserPackageSID();
 						} else {
 							if (!isValidPackageId(packageId)) {
 								console.log('Invalid package identifier');
@@ -285,9 +285,9 @@ loadAppConfig(() => {
 							argOffset = 1;
 						} else {
 							installIds.push(packageId);
-							if(packageId.indexOf('@') !== -1){
+							if (packageId.indexOf('@') !== -1) {
 								packageType = 'user';
-							} else if(packageId.indexOf('_') !== -1){
+							} else if (packageId.indexOf('_') !== -1) {
 								packageType = 'named';
 							} else {
 								packageType = 'unnamed';
@@ -325,7 +325,7 @@ loadAppConfig(() => {
 										process.exit();
 									}, true, force, update);
 								};
-								if(packageType === 'unnamed'){ // If so, installIds will be [packageId]
+								if (packageType === 'unnamed') { // If so, installIds will be [packageId]
 									getPackageSID(installId, (sid) => {
 										installId = getMajorInstallId(sid);
 										install();
@@ -341,16 +341,16 @@ loadAppConfig(() => {
 						let packageId = cmdArgs[1];
 						let flag = cmdArgs[2];
 						let save = false;
-						if(packageId === '--save'){
+						if (packageId === '--save') {
 							packageId = undefined;
 						}
-						if(flag === '--save'){
+						if (flag === '--save') {
 							save = true;
 						}
 						if (packageId === undefined) {
 							if (fs.existsSync(packagesPath)) {
 								deleteDirectory(packagesPath, (err) => {
-									if(err){
+									if (err) {
 										console.log(`Could not uninstall package`);
 										process.exit();
 									} else {
@@ -369,9 +369,9 @@ loadAppConfig(() => {
 							process.exit();
 						}
 						let packageType = null;
-						if(packageId.indexOf('@') !== -1){
+						if (packageId.indexOf('@') !== -1) {
 							packageType = 'user';
-						} else if(packageId.indexOf('_') !== -1){
+						} else if (packageId.indexOf('_') !== -1) {
 							packageType = 'named';
 						} else {
 							packageType = 'unnamed';
@@ -391,20 +391,20 @@ loadAppConfig(() => {
 									}
 									if (--dependency.refCount === 0) {
 										deleteDirectory(dependency.dir, (err) => {
-											if(err){
+											if (err) {
 												console.log(panickMsg, err);
 												process.exit();
 											}
 											if (dependency.package !== null) { // Possibly sub-dependencies to uninstall
 												let uninstallSubDependencies = () => {
-													if(dependency.package.dependencies.length === 0){ // No sub-dependencies
+													if (dependency.package.dependencies.length === 0) { // No sub-dependencies
 														callback();
 														return;
 													}
 													let uninstalled = 0;
 													for (let _dependency of dependency.package.dependencies) {
 														uninstall(_dependency, () => {
-															if(++uninstalled === dependency.package.dependencies.length){ // All sub-dependencies have been uninstalled
+															if (++uninstalled === dependency.package.dependencies.length) { // All sub-dependencies have been uninstalled
 																callback();
 															}
 														});
@@ -423,7 +423,7 @@ loadAppConfig(() => {
 													if (deleteDir) {
 														let dir = path.resolve(dependency.dir, '..');
 														deleteDirectory(dir, (err) => {
-															if(err){
+															if (err) {
 																console.log(panickMsg, err);
 																process.exit();
 															}
@@ -450,13 +450,53 @@ loadAppConfig(() => {
 								});
 							});
 						};
-						if(packageType === 'unnamed'){
+						if (packageType === 'unnamed') {
 							getPackageSID(packageId, (sid) => {
 								packageId = getMajorInstallId(sid);
 								proceed();
 							});
 						} else {
 							proceed();
+						}
+					}
+						break;
+					case 'push': {
+						let target = cmdArgs[1];
+						if (target === undefined) {
+							showCommandHelp('push');
+						}
+						switch (target.toLowerCase()) {
+							case 'readme': {
+								let packageId = cmdArgs[2];
+								let readmePath = path.resolve(bjspmPath, 'readme.md');
+								if(!existsAsFile(readmePath)){
+									console.log(`No readme file in bjspm directory`);
+									process.exit();
+								}
+								let packageType = getPackageType();
+								if(packageId === undefined){
+									if(packageType !== 'user'){
+										console.log(`No package specified`);
+										process.exit();
+									}
+									packageId = getUserPackageSID();
+								}
+								if(!isValidPackageId(packageId)){
+									console.log(`Invalid package identifier`);
+									process.exit();
+								}
+								pollUsername((username) => {
+									getAuthToken(username, (authToken) => {
+										uploadReadme(packageId, authToken, () => {
+											console.log(`Readme updated`);
+											process.exit();
+										});
+									});
+								}, packageType === 'user' ? package.username : undefined);
+							}
+								break;
+							default:
+								showCommandHelp('push');
 						}
 					}
 						break;
@@ -1063,7 +1103,7 @@ function getPackageChecksums(packageId, callback) {
 	});
 }
 
-function getPackageSID(hid, callback){
+function getPackageSID(hid, callback) {
 	apiPost({
 		action: 'GET_PACKAGE_SID_FROM_HID',
 		hid: hid
@@ -1078,17 +1118,17 @@ function getAppDataPackagePath(packageId) {
 	return filePath;
 }
 
-function getUserPackageBaseId() {
+function getUserPackageSID() {
 	return `@${package.username}/${package.name}@${package.version}`;
 }
 
-function getMajorInstallId(installId){
-	if(installId.indexOf('@') != -1){
+function getMajorInstallId(installId) {
+	if (installId.indexOf('@') != -1) {
 		let split = installId.split('@');
 		let bsid = split[1];
 		let version = split[2];
 		let major = semverMajor(version);
-		return `@${ bsid }${ major }`;
+		return `@${bsid}${major}`;
 	} else {
 		return installId;
 	}
@@ -1151,6 +1191,22 @@ function getDependencies(package, callback, dependencies = []) {
 		}
 	};
 	iterate();
+}
+
+function existsAsFile(filePath){
+	if(!fs.existsSync(filePath)){
+		return false;
+	}
+	let stats = fs.statSync(filePath);
+	return stats.isFile();
+}
+
+function existsAsDirectory(filePath){
+	if(!fs.existsSync(filePath)){
+		return false;
+	}
+	let stats = fs.statSync(filePath);
+	return stats.isDirectory();
 }
 
 function installPackage(packageId, folder, dlType, callback, save = false, force = false, update = false) {
@@ -1222,7 +1278,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						} else {
 							targetPath = path.resolve(packagesPath, `@${user}`, `${packageName}${versionMajor}`);
 							deleteDirectory(targetPath, (err) => {
-								if(err){
+								if (err) {
 									console.log(panickMsg, err);
 									process.exit();
 								}
@@ -1265,7 +1321,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 		};
 		if (folder === null) {
 			deleteDirectory(targetPath, (err) => {
-				if(err){
+				if (err) {
 					console.log(panickMsg, err);
 					process.exit();
 				}
@@ -1506,7 +1562,49 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback) 
 				access: access,
 				tags: JSON.stringify(tags)
 			}
-		}, callback);
+		}, (a, b, body) => {
+			try {
+				let obj = JSON.parse(body);
+				if (obj.error) {
+					console.log('ERROR', obj.error);
+					process.exit();
+				}
+				callback(obj);
+			} catch (e) {
+				//console.log(e);
+				console.log(body);
+				process.exit();
+			}
+		});
+	});
+}
+
+function uploadReadme(package, authToken, callback) {
+	let readmePath = path.resolve(bjspmPath, 'readme.md');
+	console.log('Uploading readme...');
+	getTmpToken(() => {
+		request.post({
+			url: 'https://bjspm.croncle.com/api.php', formData: {
+				action: 'UPDATE_PACKAGE_README',
+				authToken: authToken,
+				tmpToken: tmpToken,
+				package: package,
+				readme: fs.createReadStream(readmePath)
+			}
+		}, (a, b, body) => {
+			try {
+				let obj = JSON.parse(body);
+				if (obj.error) {
+					console.log('ERROR', obj.error);
+					process.exit();
+				}
+				callback(obj);
+			} catch (e) {
+				//console.log(e);
+				console.log(body);
+				process.exit();
+			}
+		});
 	});
 }
 
