@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const version = '1.1.0';
 const fs = require('fs');
 const crypto = require('crypto');
 const archiver = require('archiver');
@@ -16,7 +17,9 @@ const readline = require('readline').createInterface({
 const Minimatch = require('minimatch').Minimatch;
 const semverValid = require('semver/functions/valid');
 const semverMaxSatisfying = require('semver/ranges/max-satisfying');
-const semverMajor = require('semver/functions/major')
+const semverMajor = require('semver/functions/major');
+const semverInc = require('semver/functions/inc');
+const semverGt = require('semver/functions/gt');
 const semver2Regex = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/;
 const path = require('path');
 const cwdPath = process.cwd() + path.sep;
@@ -113,6 +116,7 @@ loadAppConfig(() => {
 						initPackage();
 					}
 						break;
+					case 'p':
 					case 'publish': {
 						if (!isValidPackage()) {
 							console.log('This package has an invalid configuration; run "bjspm init" to fix this.');
@@ -337,6 +341,12 @@ loadAppConfig(() => {
 						}
 					}
 						break;
+					case 'u':
+					case 'un':
+					case 'unlink':
+					case 'remove':
+					case 'rm':
+					case 'r':
 					case 'uninstall': {
 						let packageId = cmdArgs[1];
 						let flag = cmdArgs[2];
@@ -469,19 +479,19 @@ loadAppConfig(() => {
 							case 'readme': {
 								let packageId = cmdArgs[2];
 								let readmePath = path.resolve(bjspmPath, 'readme.md');
-								if(!existsAsFile(readmePath)){
+								if (!existsAsFile(readmePath)) {
 									console.log(`No readme file in bjspm directory`);
 									process.exit();
 								}
 								let packageType = getPackageType();
-								if(packageId === undefined){
-									if(packageType !== 'user'){
+								if (packageId === undefined) {
+									if (packageType !== 'user') {
 										console.log(`No package specified`);
 										process.exit();
 									}
 									packageId = getUserPackageSID();
 								}
-								if(!isValidPackageId(packageId)){
+								if (!isValidPackageId(packageId)) {
 									console.log(`Invalid package identifier`);
 									process.exit();
 								}
@@ -815,6 +825,56 @@ loadAppConfig(() => {
 						}
 					}
 						break;
+					case '-v':
+					case '--version':
+						console.log(version);
+						process.exit();
+						break;
+					case 'version':
+						let varg = cmdArgs[1];
+						if (varg === undefined) {
+							console.log(version);
+							process.exit();
+						}
+						if(!existsAsFile(packageJsonPath)){
+							console.log('No package file, please run "bjspm init" first');
+							process.exit();
+						}
+						if (semverValid(varg)) {
+							if(!semverGt(varg, package.version)){
+								console.log(`New version must be greater than current version (${ package.version })`);
+								process.exit();
+							}
+							package.version = newVersion;
+							storePackage();
+							console.log(`v${ package.version }`);
+						} else {
+							let arg = cmdArgs[2];
+							let preid = undefined;
+							if(arg !== undefined){
+								if(arg === '--preid'){
+									preid = cmdArgs[3];
+								} else if(arg.startsWith('--preid=')){
+									preid = arg.substr(8);
+								}
+							}
+							let arr = ['major', 'minor', 'patch', 'premajor', 'preminor', 'prepatch', 'prerelease'];
+							if (arr.indexOf(varg) === -1) {
+								showCommandHelp('version');
+							}
+							let newVersion = semverInc(package.version, varg, preid);
+							if(newVersion !== null){
+								package.version = newVersion;
+								storePackage();
+								console.log(`v${ package.version }`);
+							} else {
+								console.log(panickMsg);
+								process.exit();
+							}
+						}
+						break;
+						case 'ls':
+							break;
 					case 'api': {
 						if (cmdArgs[1] === undefined) {
 							break;
@@ -1193,16 +1253,16 @@ function getDependencies(package, callback, dependencies = []) {
 	iterate();
 }
 
-function existsAsFile(filePath){
-	if(!fs.existsSync(filePath)){
+function existsAsFile(filePath) {
+	if (!fs.existsSync(filePath)) {
 		return false;
 	}
 	let stats = fs.statSync(filePath);
 	return stats.isFile();
 }
 
-function existsAsDirectory(filePath){
-	if(!fs.existsSync(filePath)){
+function existsAsDirectory(filePath) {
+	if (!fs.existsSync(filePath)) {
 		return false;
 	}
 	let stats = fs.statSync(filePath);
@@ -2143,10 +2203,7 @@ function showCommandHelp(cmd) {
 		case 'install': {
 			console.log(`
 bjspm install (with no args, in package dir)
-bjspm install <pkg>
-bjspm install @<user>/<pkg>
-bjspm install @<user>/<pkg>@<version>
-bjspm install @<user>/<pkg>@<version range>
+bjspm install <package_id>
 
 alias: i
 `);
@@ -2161,10 +2218,7 @@ alias: i
 		case 'uninstall': {
 			console.log(`
 bjspm uninstall (with no args, in package dir)
-bjspm uninstall <pkg>
-bjspm uninstall @<user>/<pkg>
-bjspm uninstall @<user>/<pkg>@<version>
-bjspm uninstall @<user>/<pkg>@<version range>
+bjspm uninstall <package_id>
 
 aliases: u, un, unlink, remove, rm, r
 `);
