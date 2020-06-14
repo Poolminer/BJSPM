@@ -128,69 +128,78 @@ loadAppConfig(() => {
 							log('This package has an invalid configuration; run "bjspm init" to fix this.');
 							process.exit();
 						}
+						let uploadType = getPackageType();
+						let tags = [];
+						let access = 'public';
+						let paths = [];
+
+						for (let i = 1; i < cmdArgs.length; i++) {
+							let arg = cmdArgs[i];
+							if (arg.startsWith('-')) {
+								break;
+							}
+							paths.push(arg);
+						}
+						if (conf = cmdConfig['type']) {
+							let arg = conf[0];
+							if (arg !== undefined) {
+								switch (arg.toLowerCase()) {
+									case 'user':
+										if (package.username.length === 0) {
+											log('This package is not configured properly to be a user package; run "bjspm init" to fix this.');
+											process.exit();
+										}
+										uploadType = 'user';
+										break;
+									case 'named':
+										if (package.name.length === 0) {
+											log('This package is not configured properly to be a named package; run "bjspm init" to fix this.');
+											process.exit();
+										} else {
+											uploadType = 'named';
+										}
+										break;
+									case 'unnamed':
+										uploadType = 'unnamed';
+										break;
+								}
+							}
+						}
+						if (conf = cmdConfig['tag']) {
+							if (uploadType === 'user') {
+								let tag = conf[0];
+								if (tag !== undefined) {
+									if (!isValidPackageTag(tag)) {
+										log('Invalid package tag');
+										process.exit();
+									}
+									tags = [tag];
+								}
+							}
+						}
+						if (conf = cmdConfig['access']) {
+							let arg = conf[0];
+							if (arg !== undefined) {
+								switch (arg.toLowerCase()) {
+									case 'public':
+										access = 'public';
+										break;
+									case 'restricted':
+										access = 'restricted'
+										break;
+									default:
+										log('Invalid access level');
+										process.exit();
+										break;
+								}
+							}
+						}
 						getServerConfig(serverConfig => {
-							zipPackage(result => {
+							let onZipped = result => {
 								let zipPath = result.zipPath;
 								let fileData = result.fileData;
 								let cleanupCallback = result.cleanupCallback;
-								let uploadType = getPackageType();
-								let tags = [];
-								let access = 'public';
 
-								if (conf = cmdConfig['type']) {
-									let arg = conf[0];
-									if (arg !== undefined) {
-										switch (arg.toLowerCase()) {
-											case 'user':
-												if (package.username.length === 0) {
-													log('This package is not configured properly to be a user package; run "bjspm init" to fix this.');
-													process.exit();
-												}
-												uploadType = 'user';
-												break;
-											case 'named':
-												if (package.name.length === 0) {
-													log('This package is not configured properly to be a named package; run "bjspm init" to fix this.');
-													process.exit();
-												} else {
-													uploadType = 'named';
-												}
-												break;
-											case 'unnamed':
-												uploadType = 'unnamed';
-												break;
-										}
-									}
-								}
-								if (conf = cmdConfig['tag']) {
-									if (uploadType === 'user') {
-										let tag = conf[0];
-										if (tag !== undefined) {
-											if (!isValidPackageTag(tag)) {
-												log('Invalid package tag');
-												process.exit();
-											}
-											tags = [tag];
-										}
-									}
-								}
-								if (conf = cmdConfig['access']) {
-									let arg = conf[0];
-									if (arg !== undefined) {
-										switch (arg.toLowerCase()) {
-											case 'public':
-												access = 'public';
-												break;
-											case 'private':
-												access = 'private'
-												break;
-											default:
-												log('Invalid access level');
-												process.exit();
-												break;
-										}
-									}
-								}
 								let uploadCallback = (obj) => {
 									switch (obj.status) {
 										case API_STATUS.OK:
@@ -235,7 +244,12 @@ loadAppConfig(() => {
 								} else {
 									uploadPackage(zipPath, fileData, '', uploadType, access, tags, uploadCallback);
 								}
-							});
+							};
+							if (paths.length === 0) {
+								zipPackage(onZipped);
+							} else {
+								zipFiles(paths, onZipped);
+							}
 						});
 					}
 						break;
@@ -269,29 +283,43 @@ loadAppConfig(() => {
 						break;
 					case 'i':
 					case 'install':
+					case 'up':
+					case 'upgrade':
+					case 'udpate':
 					case 'update': {
 						let packageId = cmdArgs[1];
-						let argOffset = 2;
 						let folder = null;
 						let dlType = 'rel';
 						let installIds = [];
 						let force = false;
-						let update = cmdArgs[0] === 'update';
+						let update = ['up', 'upgrade', 'udpate', 'update'].indexOf(cmdArgs[0]) !== -1;
 						let packageType = null;
 
-						if (packageId === undefined || packageId.startsWith('-')) {
-							installIds = package.dependencies;
-							argOffset = 1;
+						if (update) {
+							for (let i = 1; i < cmdArgs.length; i++) {
+								let arg = cmdArgs[i];
+								if (arg.startsWith('-')) {
+									break;
+								}
+								installIds.push(arg);
+							}
+							if (installIds.length === 0) {
+								installIds = package.dependencies;
+							}
 						} else {
-							installIds.push(packageId);
-							packageType = getPackageTypeFromSid(packageId);
-						}
-						if (conf = cmdConfig['dir']) {
-							let arg = conf[0];
-							if (arg !== undefined) {
-								folder = arg;
+							if (packageId === undefined || packageId.startsWith('-')) {
+								installIds = package.dependencies;
 							} else {
-								showCommandHelp('install');
+								installIds.push(packageId);
+								packageType = getPackageTypeFromSid(packageId);
+							}
+							if (conf = cmdConfig['dir']) {
+								let arg = conf[0];
+								if (arg !== undefined) {
+									folder = arg;
+								} else {
+									showCommandHelp('install');
+								}
 							}
 						}
 						if ('abs' in cmdConfig) {
@@ -306,19 +334,34 @@ loadAppConfig(() => {
 								process.exit();
 							}
 							checkPackageAvailability(installId, (availability) => {
-								let install = () => {
-									installPackage(installId, folder, dlType, (result) => {
-										log('Installed');
-										process.exit();
-									}, true, force, update);
-								};
-								if (packageType === 'unnamed') { // If so, installIds will be [packageId]
-									getPackageSID(installId, (sid) => {
-										installId = getMajorInstallId(sid);
+								let proceed = (authToken) => {
+									let install = () => {
+										installPackage(installId, folder, dlType, (result) => {
+											log('Installed');
+											process.exit();
+										}, authToken, true, force);
+									};
+									if (packageType === 'unnamed') { // If so, installIds will be [packageId]
+										getPackageSID(installId, (sid) => {
+											installId = getMajorInstallId(sid);
+											install();
+										});
+									} else {
 										install();
-									});
+									}
+								};
+								if(availability === 'private'){
+									let matches = installId.match(regexInstallUser);
+									let username = matches !== null ? matches[1] : '';
+
+									log(credentialsMsg);
+									pollUsername((username) => {
+										getAuthToken(username, (authToken) => {
+											proceed(authToken);
+										});
+									}, username);
 								} else {
-									install();
+									proceed();
 								}
 							});
 						}
@@ -966,9 +1009,7 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
-						getJson2('https://bjspm.croncle.com/package/@gijs/test@1.0.0?json', (res) => {
-							log(res);
-						});
+						log(getEmptySubDirectories('.'));
 						break;
 					default:
 						showQuickHelp();
@@ -978,7 +1019,7 @@ loadAppConfig(() => {
 	});
 });
 
-function log(...args){
+function log(...args) {
 	console.log.apply(this, args);
 }
 
@@ -1027,7 +1068,7 @@ function download(url, filename, onProgress, callback) {
 	const res = got.stream(url);
 
 	res.on('downloadProgress', (progress) => {
-		if(process.total === undefined){
+		if (progress.total === undefined) {
 			onProgress({
 				bytesReceived: progress.transferred
 			});
@@ -1041,7 +1082,7 @@ function download(url, filename, onProgress, callback) {
 	});
 
 	stream.pipeline(res, file, (err) => {
-		if(err){
+		if (err) {
 			fs.unlinkSync(filename);
 			return callback(err.message);
 		}
@@ -1065,10 +1106,12 @@ function pollUsername(callback, defaultOption = '') {
 
 async function apiPost(formData, callback) {
 	const form = new FormData();
-	for(let key in formData){
-		form.append(key, formData[key]);
+	for (let key in formData) {
+		if(formData[key] !== undefined){
+			form.append(key, formData[key]);
+		}
 	}
-	const {body} = await got.post('https://bjspm.croncle.com/api.php', {
+	const { body } = await got.post('https://bjspm.croncle.com/api.php', {
 		body: form
 	}, (err) => {
 		if (err) {
@@ -1089,7 +1132,7 @@ async function apiPost(formData, callback) {
 	}
 }
 async function getJson(url, callback) {
-	const {body} = await got.get(url, {}, (err) => {
+	const { body } = await got.get(url, {}, (err) => {
 		if (err) {
 			log(panickMsg, err);
 			process.exit();
@@ -1145,7 +1188,7 @@ function getAccessListForUser(user, callback) {
 	});
 }
 
-function getAccessListForPackage(packageBaseId, user, callback, authToken = '') {
+function getAccessListForPackage(packageBaseId, user, callback, authToken) {
 	apiPost({
 		action: 'GET_PACKAGE_ACCESS_LIST',
 		authToken: authToken,
@@ -1249,22 +1292,24 @@ function getServerConfig(callback) {
 	}, callback);
 }
 
-function getPackageDownloadUrls(packageId, callback) {
+function getPackageDownloadUrls(packageId, callback, authToken) {
 	apiPost({
 		action: 'GET_PACKAGE_DOWNLOAD_URLS',
+		authToken: authToken,
 		package: packageId
 	}, (obj) => {
 		callback(obj.urls);
 	});
 }
 
-function getPackageChecksums(packageId, callback) {
+function getPackageChecksums(packageId, callback, authToken) {
 	if (packageChecksumsCache[packageId] !== undefined) {
 		callback(packageChecksumsCache[packageId]);
 		return;
 	}
 	apiPost({
 		action: 'GET_PACKAGE_CHECKSUMS',
+		authToken: authToken,
 		package: packageId
 	}, (obj) => {
 		packageChecksumsCache[packageId] = obj.checksums;
@@ -1380,7 +1425,7 @@ function existsAsDirectory(filePath) {
 	return stats.isDirectory();
 }
 
-function installPackage(packageId, folder, dlType, callback, save = false, force = false, update = false) {
+function installPackage(packageId, folder, dlType, callback, authToken, save = false, force = false) {
 	if (!isValidPackageInstallId(packageId)) {
 		callback(null);
 		return;
@@ -1441,7 +1486,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 									storePackage();
 								}
 								callback({ filepath: filepath, version: packageVersion });
-							}, force, update);
+							}, authToken, force);
 						};
 						if (folder !== null) {
 							targetPath = path.resolve(folder, `@${user}`, `${packageName}${versionMajor}`);
@@ -1465,8 +1510,8 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						proceed();
 					}
 				});
-			});
-		});
+			}, authToken);
+		}, authToken);
 	} else {
 		downloadId = packageId;
 		packageBaseId = packageId;
@@ -1477,7 +1522,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 		} else {
 			targetPath = path.resolve(packagesPath, packageBaseId);
 		}
-		if ((update || !force) && fs.existsSync(getInstallDirFromInstallId(packageBaseId))) {
+		if (!force && fs.existsSync(getInstallDirFromInstallId(packageBaseId))) {
 			callback(null);
 			return;
 		}
@@ -1488,7 +1533,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 					storePackage();
 				}
 				callback({ filepath: filepath });
-			}, force, update);
+			}, authToken, force);
 		};
 		if (folder === null) {
 			deleteDirectory(targetPath, (err) => {
@@ -1504,7 +1549,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 	}
 }
 
-function downloadPackageChain(packageId, dlType, targetPath, callback, force = false, update = false) {
+function downloadPackageChain(packageId, dlType, targetPath, callback, authToken, force = false) {
 	downloadPackage(packageId, dlType, targetPath, () => {
 		let packageFile = path.resolve(targetPath, 'bjspm', 'package.json');
 		if (fs.existsSync(packageFile)) {
@@ -1520,7 +1565,7 @@ function downloadPackageChain(packageId, dlType, targetPath, callback, force = f
 							let dependency = obj.dependencies[i++];
 							installPackage(`${dependency}`, null, dlType, (result) => {
 								installNext();
-							}, false, force, update);
+							}, authToken, false, force);
 						};
 						installNext();
 					}
@@ -1529,7 +1574,7 @@ function downloadPackageChain(packageId, dlType, targetPath, callback, force = f
 		} else {
 			callback(targetPath);
 		}
-	});
+	}, authToken);
 }
 
 // function deleteDirectory(path) {
@@ -1558,7 +1603,7 @@ function isPackageInCache(packageId) {
 	return fs.existsSync(zipPath);
 }
 
-function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) {
+function downloadPackage(packageId, dlType, targetPath, callback, authToken, urlIndex = 0) {
 	let zipPath = getAppDataPackagePath(packageId);
 	mkdirSync(appConfig.packageCachePath);
 	mkdirSync(targetPath);
@@ -1630,29 +1675,35 @@ function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) 
 							log(prefix + package.files[0].path);
 						}
 					}
-					let downloadIndex = -1;
+					let downloadIndex = 0;
 					let rawTotalSize = 0;
 					for (let file of package.files) {
 						rawTotalSize += file.size;
 					}
+					let sortedFiles = package.files.slice().sort((a, b) => a.size - b.size);
 					if (rawTotalSize === 0) {
 						let accumulatedSize = 0;
-						for (let file of package.files) {
+						for (let file of sortedFiles) {
 							accumulatedSize += 1;
 							file.atSizePercentage = accumulatedSize / files.length;
 						}
 					} else {
 						let accumulatedSize = 0;
-						for (let file of package.files) {
+						for (let file of sortedFiles) {
 							accumulatedSize += file.size;
 							file.atSizePercentage = accumulatedSize / rawTotalSize;
 						}
 					}
+					if(authToken !== undefined){
+						if(url.endsWith('?download')){ // hosted on bjspm.croncle.com
+							url += `&authToken=${ authToken }`;
+						}
+					}
 					download(url, zipPath, (status) => {
-						for (let i = 0; i < package.files.length; i++) {
-							let file = package.files[i];
-							let nextFile = package.files[i + 1];
-							if (i > downloadIndex && status.percentage >= file.atSizePercentage) {
+						for (let i = downloadIndex; i < sortedFiles.length; i++) {
+							let file = sortedFiles[i];
+							let nextFile = sortedFiles[i + 1];
+							if (status.percentage >= file.atSizePercentage) {
 								if (nextFile !== undefined) {
 									log(prefix + nextFile.path);
 								}
@@ -1677,10 +1728,10 @@ function downloadPackage(packageId, dlType, targetPath, callback, urlIndex = 0) 
 							onDownloaded(true);
 						}
 					});
-				});
-			});
+				}, authToken);
+			}, authToken);
 		}
-	});
+	}, authToken);
 }
 
 function getPackageTags(packageId, callback, authToken) {
@@ -1696,12 +1747,12 @@ function getPackageTags(packageId, callback, authToken) {
 	getJson(url, _callback);
 }
 
-function getPackageVersions(packageId, callback) {
+function getPackageVersions(packageId, callback, authToken) {
 	if (packageVersionsCache[packageId] !== undefined) {
 		callback(packageVersionsCache[packageId]);
 		return;
 	}
-	let url = webPackagesPath + packageId + '?versions';
+	let url = webPackagesPath + packageId + '?versions' + (authToken ? `&authToken=${authToken}` : '');
 	let _callback = (obj) => {
 		packageVersionsCache[packageId] = obj;
 		callback(JSON.stringify(obj));
@@ -1709,8 +1760,8 @@ function getPackageVersions(packageId, callback) {
 	getJson(url, _callback);
 }
 
-function getPackageJson(packageId, callback) {
-	let url = webPackagesPath + packageId + '?json';
+function getPackageJson(packageId, callback, authToken) {
+	let url = webPackagesPath + packageId + '?json' + (authToken ? `&authToken=${authToken}` : '');
 	getJson(url, callback);
 }
 
@@ -1733,10 +1784,12 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback) 
 			access: access,
 			tags: JSON.stringify(tags)
 		};
-		for(let key in formData){
-			form.append(key, formData[key]);
+		for (let key in formData) {
+			if(formData[key] !== undefined){
+				form.append(key, formData[key]);
+			}
 		}
-		const {body} = await got.post('https://bjspm.croncle.com/api.php', {
+		const { body } = await got.post('https://bjspm.croncle.com/api.php', {
 			body: form
 		}, (err) => {
 			if (err) {
@@ -1770,10 +1823,12 @@ function uploadReadme(package, authToken, callback) {
 			package: package,
 			readme: fs.createReadStream(readmePath)
 		};
-		for(let key in formData){
-			form.append(key, formData[key]);
+		for (let key in formData) {
+			if(formData[key] !== undefined){
+				form.append(key, formData[key]);
+			}
 		}
-		const {body} = await got.post('https://bjspm.croncle.com/api.php', {
+		const { body } = await got.post('https://bjspm.croncle.com/api.php', {
 			body: form
 		}, (err) => {
 			if (err) {
@@ -1904,6 +1959,72 @@ function isValidPackage() {
 	}
 }
 
+function zipFiles(files, callback) {
+	tmp.dir({ unsafeCleanup: true }, (err, tmpDir, cleanupCallback) => {
+		if (err) {
+			log(panickMsg, err);
+			process.exit();
+		}
+		let fileData = [];
+		let totalSize = 0;
+		let zipPath = tmpDir + '/archive.zip';
+		var output = fs.createWriteStream(zipPath);
+		var archive = archiver('zip', {
+			zlib: { level: 9 } // Sets the compression level.
+		});
+		archive.pipe(output);
+
+		for (let file of files) {
+			if (!fs.existsSync) {
+				log(`Non-existent file: "${file}"`);
+				process.exit();
+			}
+			let stats = fs.statSync(file);
+			if (stats.isDirectory()) {
+				let entries = getDirectoryEntries(file, path.basename(file) + '/');
+				if (entries.length === 0) {
+					if (path.isAbsolute(file)) {
+						log(`Packing ${file}...`);
+						archive.file(file, { name: path.basename(file) });
+					} else {
+						log(`Packing ${file}...`);
+						archive.file(path.resolve('.', file), { name: file });
+					}
+				} else {
+					for (let entry of entries) {
+						let entryStats = fs.statSync(entry.path);
+						totalSize += entryStats.size;
+						fileData.push({
+							path: entry.path,
+							size: entryStats.size
+						});
+						log(`Packing ${entry.path}...`);
+						archive.file("./" + entry.path, { name: entry.path });
+					}
+				}
+			} else {
+				totalSize += stats.size;
+				fileData.push({
+					path: file,
+					size: stats.size
+				});
+				if (path.isAbsolute(file)) {
+					log(`Packing ${file}...`);
+					archive.file(file, { name: path.basename(file) });
+				} else {
+					log(`Packing ${file}...`);
+					archive.file(path.resolve('.', file), { name: file });
+				}
+			}
+		}
+		fileData.sort((a, b) => a.size - b.size);
+		fileData['totalSize'] = totalSize;
+		archive.finalize().then(() => {
+			callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
+		});
+	});
+}
+
 function zipPackage(callback) {
 	tmp.dir({ unsafeCleanup: true }, (err, path, cleanupCallback) => {
 		if (err) {
@@ -1941,6 +2062,7 @@ function zipPackage(callback) {
 					archive.file("./" + entry.path, { name: entry.path });
 				}
 			}
+			fileData.sort((a, b) => a.size - b.size);
 			fileData['totalSize'] = totalSize;
 			archive.finalize().then(() => {
 				callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
@@ -1981,6 +2103,26 @@ function getSubFiles(dir) {
 	return results;
 }
 
+function getEmptySubDirectories(dir) {
+	let results = [];
+	let list = fs.readdirSync(dir);
+
+	for (let fileName of list) {
+		let filePath = path.resolve(dir, fileName);
+		let stat = fs.statSync(filePath);
+		if (stat.isDirectory()) {
+			let subFiles = fs.readdirSync(filePath)
+			if (subFiles.length === 0) {
+				results.push(filePath);
+			} else {
+				let subPaths = getEmptySubDirectories(filePath);
+				results = results.concat(subPaths);
+			}
+		}
+	}
+	return results;
+}
+
 function getDirectoryEntries(dir, relDir = '') {
 	let results = [];
 	let list = fs.readdirSync(dir);
@@ -1990,7 +2132,15 @@ function getDirectoryEntries(dir, relDir = '') {
 		let stat = fs.statSync(filePath);
 		if (stat.isDirectory()) {
 			let subPaths = getDirectoryEntries(filePath, relDir + fileName + '/');
-			results = results.concat(subPaths);
+			if (subPaths.length === 0) {
+				results.push({
+					folder: relDir,
+					file: fileName,
+					path: relDir + fileName
+				});
+			} else {
+				results = results.concat(subPaths);
+			}
 		} else {
 			results.push({
 				folder: relDir,
@@ -2012,7 +2162,7 @@ function getPackageType() {
 	}
 }
 
-function getPackageTypeFromSid(sid){
+function getPackageTypeFromSid(sid) {
 	if (sid.indexOf('@') !== -1) {
 		return 'user';
 	} else if (sid.indexOf('_') !== -1) {
@@ -2324,13 +2474,26 @@ Press ^C at any time to quit.
 
 function showCommandHelp(cmd) {
 	switch (cmd) {
+		case 'init': {
+			log(`
+aliases: create, innit
+`);
+		}
+			break;
 		case 'i':
 		case 'install': {
 			log(`
 bjspm install (with no args, in package dir)
-bjspm install <package_id>
+bjspm install <hex_id>
+bjspm install <pkg>_<hex_id>
+bjspm install <@user>/<pkg>
+bjspm install <@user>/<pkg>@<tag>
+bjspm install <@user>/<pkg>@<version>
+bjspm install <@user>/<pkg>@<version range>
 
-alias: i
+options: --abs, --force
+
+alias: i, isntall, add
 `);
 		}
 			break;
@@ -2343,27 +2506,89 @@ alias: i
 		case 'uninstall': {
 			log(`
 bjspm uninstall (with no args, in package dir)
-bjspm uninstall <package_id>
+bjspm uninstall <pkg>
 
 aliases: u, un, unlink, remove, rm, r
+`);
+		}
+			break;
+		case 'update': {
+			log(`
+bjspm update [<pkg>...] [--abs] [--force]
+
+alias: up, upgrade, udpate
 `);
 		}
 			break;
 		case 'p':
 		case 'publish': {
 			log(`
-bjspm publish [<unnamed|named|user>]
+bjspm publish [<file|folder>...] [--type <unnamed|named|user>] [--tag <tag>] [--access <public|restricted>]
 
-alias: p
+Publishes '.' if no argument supplied
+
+Sets tag \`latest\` if no --tag specified
+`);
+		}
+			break;
+		case 'unpublish': {
+			log(`
+bjspm unpublish (with no args, package dir)
+bjspm unpublish <hex_id>
+bjspm unpublish <pkg>_<hex_id>
+bjspm unpublish <@user>/<pkg>
+bjspm unpublish <@user>/<pkg>@<version>
 `);
 		}
 			break;
 		case 'v':
 		case 'version': {
 			log(`
-bjspm version [<new version>]
+bjspm version [<newversion> | major | minor | patch | premajor | preminor | prepatch | prerelease] [--preid=<prerelease-id>]
+(run in package dir)
+'bjspm -v' or 'bjspm --version' to print bjspm version (${ version})
+'bjspm ls' to inspect current package/dependency versions
+`);
+		}
+			break;
+		case 'push': {
+			log(`
+bjspm push readme
+`);
+		}
+			break;
+		case 'dist-tag': {
+			log(`
+bjspm dist-tag add <@user>/<pkg>@<version> [<tag>]
+bjspm dist-tag rm <@user>/<pkg> <tag>
+bjspm dist-tag ls [<@user>/<pkg>]
 
-alias: v
+alias: dist-tags
+`);
+		}
+			break;
+		case 'access': {
+			log(`
+			bjspm access public [<package>]
+bjspm access restricted [<package>]
+bjspm access set <read-only|read-write> <user> [<package>]
+bjspm access ls-packages [<user>]
+bjspm access ls-collaborators [<package> [<user>]]
+`);
+		}
+			break;
+		case 'cache': {
+			log(`
+bjspm cache clear
+bjspm cache verify
+`);
+		}
+			break;
+		case 'ls': {
+			log(`
+npm ls [[<@scope>/]<pkg> ...]
+
+aliases: list, la, ll
 `);
 		}
 			break;
