@@ -350,7 +350,7 @@ loadAppConfig(() => {
 										install();
 									}
 								};
-								if(availability === 'private'){
+								if (availability === 'private') {
 									let matches = installId.match(regexInstallUser);
 									let username = matches !== null ? matches[1] : '';
 
@@ -678,7 +678,7 @@ loadAppConfig(() => {
 									});
 								}
 									break;
-								case 'set':
+								case 'set': {
 									if (cmdArgs.length === 2) {
 										showCommandHelp('access');
 									} else {
@@ -726,6 +726,7 @@ loadAppConfig(() => {
 												showCommandHelp('access');
 										}
 									}
+								}
 									break;
 								case 'ls-packages': {
 									if (cmdArgs.length !== 3) {
@@ -789,6 +790,82 @@ loadAppConfig(() => {
 									showCommandHelp('access');
 							}
 						}
+					}
+						break;
+					case 'view': {
+						let packageId = cmdArgs[1];
+						if (packageId === undefined) {
+							log(JSON.stringify(package, undefined, 2));
+							process.exit();
+						}
+						if (!isValidPackageId(packageId)) {
+							log('Invalid package identifier');
+							process.exit();
+						}
+						let logObj = (obj) => {
+							if (cmdArgs[2] === undefined) {
+								log(JSON.stringify(obj, undefined, 2));
+							} else {
+								let logMap = {};
+								let skipped = 0;
+								for (let i = 2; i < cmdArgs.length; i++) {
+									let arg = cmdArgs[i];
+									if(arg in logMap){
+										skipped++;
+										continue;
+									}
+									let split = arg.split('.');
+									if (split.length === 1) {
+										if (obj[arg] !== undefined) {
+											logMap[arg] = obj[arg];
+										}
+									} else if (split.length === 2) {
+										if (obj[split[0]] !== undefined && obj[split[0]][split[1]] !== undefined) {
+											logMap[arg] = obj[split[0]][split[1]];
+										}
+									}
+								}
+								let keys = Object.keys(logMap);
+								if (keys.length === 1 && cmdArgs.length - skipped === 3) {
+									log(JSON.stringify(logMap[keys[0]]));
+								} else {
+									for (let key of keys) {
+										log(`${key} = ${JSON.stringify(logMap[key])}`);
+									}
+								}
+							}
+						};
+						checkPackageAvailability(packageId, (availability) => {
+							if (availability === 'public') {
+								getBjspmPackageJson(packageId, (obj) => {
+									logObj(obj);
+									process.exit();
+								}, undefined, (err) => {
+									let httpCode = err.response.statusCode;
+									if(httpCode === 404){
+										log('No information available about this package');
+										process.exit();
+									}
+								});
+							} else {
+								let matches = packageId.match(regexInstallUser);
+								let username = matches !== null ? matches[1] : '';
+								pollUsername((username) => {
+									getAuthToken(username, (authToken) => {
+										getBjspmPackageJson(packageId, (obj) => {
+											logObj(obj);
+											process.exit();
+										}, authToken, (err) => {
+											let httpCode = err.response.statusCode;
+											if(httpCode === 404){
+												log('No information available about this package');
+												process.exit();
+											}
+										});
+									});
+								}, username);
+							}
+						});
 					}
 						break;
 					case 'cache': {
@@ -1107,7 +1184,7 @@ function pollUsername(callback, defaultOption = '') {
 async function apiPost(formData, callback) {
 	const form = new FormData();
 	for (let key in formData) {
-		if(formData[key] !== undefined){
+		if (formData[key] !== undefined) {
 			form.append(key, formData[key]);
 		}
 	}
@@ -1131,22 +1208,26 @@ async function apiPost(formData, callback) {
 		process.exit();
 	}
 }
-async function getJson(url, callback) {
-	const { body } = await got.get(url, {}, (err) => {
-		if (err) {
-			log(panickMsg, err);
-			process.exit();
-		}
-	});
+async function getJson(url, callback, onError) {
 	try {
-		let obj = JSON.parse(body);
-		if (obj.error) {
-			log('ERROR', obj.error);
+		const { body } = await got.get(url);
+		try {
+			let obj = JSON.parse(body);
+			if (obj.error) {
+				log('ERROR', obj.error);
+				process.exit();
+			}
+			callback(obj);
+		} catch (e) {
+			log(e, body);
 			process.exit();
 		}
-		callback(obj);
-	} catch (e) {
-		log(e, body);
+	} catch (err) {
+		if(onError !== undefined){
+			onError(err);
+			return;
+		}
+		log(panickMsg, err);
 		process.exit();
 	}
 }
@@ -1694,9 +1775,9 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 							file.atSizePercentage = accumulatedSize / rawTotalSize;
 						}
 					}
-					if(authToken !== undefined){
-						if(url.endsWith('?download')){ // hosted on bjspm.croncle.com
-							url += `&authToken=${ authToken }`;
+					if (authToken !== undefined) {
+						if (url.endsWith('?download')) { // hosted on bjspm.croncle.com
+							url += `&authToken=${authToken}`;
 						}
 					}
 					download(url, zipPath, (status) => {
@@ -1765,6 +1846,11 @@ function getPackageJson(packageId, callback, authToken) {
 	getJson(url, callback);
 }
 
+function getBjspmPackageJson(packageId, callback, authToken, onError) {
+	let url = webPackagesPath + packageId + '/bjspm/package.json' + (authToken ? `&authToken=${authToken}` : '');
+	getJson(url, callback, onError);
+}
+
 function uploadPackage(path, fileData, authToken, type, access, tags, callback) {
 	log('Uploading package...');
 	getTmpToken(async () => {
@@ -1785,7 +1871,7 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback) 
 			tags: JSON.stringify(tags)
 		};
 		for (let key in formData) {
-			if(formData[key] !== undefined){
+			if (formData[key] !== undefined) {
 				form.append(key, formData[key]);
 			}
 		}
@@ -1824,7 +1910,7 @@ function uploadReadme(package, authToken, callback) {
 			readme: fs.createReadStream(readmePath)
 		};
 		for (let key in formData) {
-			if(formData[key] !== undefined){
+			if (formData[key] !== undefined) {
 				form.append(key, formData[key]);
 			}
 		}
@@ -2586,9 +2672,17 @@ bjspm cache verify
 			break;
 		case 'ls': {
 			log(`
-npm ls [[<@scope>/]<pkg> ...]
+bjspm ls 
 
 aliases: list, la, ll
+`);
+		}
+			break;
+		case 'view': {
+			log(`
+bjspm view  [<field>[.subfield]...]
+
+aliases: v, info, show
 `);
 		}
 			break;
