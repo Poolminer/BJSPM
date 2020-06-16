@@ -55,6 +55,7 @@ const defaultIgnores = ['bjspm/packages/**', '.*.swp', '._*', '.DS_Store', '.git
 const panickMsg = 'Something went wrong!';
 const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
 const checksumHashFunction = 'sha256';
+const baseArgs = Symbol('cmdConfigBaseArgs');
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
@@ -72,6 +73,7 @@ mkdirSync(appDataPath);
 let authTokens = {};
 let cmdArgs = explodeArgs(process.argv.slice(2));
 let cmdConfig = getArgsConfig(cmdArgs);
+let cmdBaseArgs = cmdConfig[baseArgs];
 let conf = null;
 
 function getEmptyPackage() {
@@ -262,7 +264,7 @@ loadAppConfig(() => {
 							}
 							packageId = package.sid;
 						} else {
-							if (!isValidPackageId(packageId)) {
+							if (!isValidSpecificPackageId(packageId)) {
 								log('Invalid package identifier');
 								process.exit();
 							}
@@ -287,7 +289,7 @@ loadAppConfig(() => {
 					case 'upgrade':
 					case 'udpate':
 					case 'update': {
-						let packageId = cmdArgs[1];
+						let packageId = cmdBaseArgs[1];
 						let folder = null;
 						let dlType = 'rel';
 						let installIds = [];
@@ -296,18 +298,21 @@ loadAppConfig(() => {
 						let packageType = null;
 
 						if (update) {
-							for (let i = 1; i < cmdArgs.length; i++) {
-								let arg = cmdArgs[i];
-								if (arg.startsWith('-')) {
-									break;
-								}
-								installIds.push(arg);
-							}
-							if (installIds.length === 0) {
+							if (cmdBaseArgs.length === 1) {
 								installIds = package.dependencies;
+							} else {
+								for (let i = 1; i < cmdBaseArgs.length; i++) {
+									installIds.push(cmdBaseArgs[i]);
+								}
+							}
+							for (let installId of installIds) {
+								if (!isValidPackageInstallId(installId)) {
+									log(`Invalid package identifier "${installId}"`);
+									process.exit();
+								}
 							}
 						} else {
-							if (packageId === undefined || packageId.startsWith('-')) {
+							if (packageId === undefined) {
 								installIds = package.dependencies;
 							} else {
 								installIds.push(packageId);
@@ -328,17 +333,19 @@ loadAppConfig(() => {
 						if ('force' in cmdConfig) {
 							force = true;
 						}
-						for (let installId of installIds) {
-							if (!isValidPackageInstallId(installId)) {
-								log(`Invalid package identifier "${installId}"`);
+						let i = 0;
+						let iterate = () => {
+							if (i === installIds.length) {
 								process.exit();
+								return;
 							}
+							let installId = installIds[i];
 							checkPackageAvailability(installId, (availability) => {
 								let proceed = (authToken) => {
 									let install = () => {
 										installPackage(installId, folder, dlType, (result) => {
-											log('Installed');
-											process.exit();
+											log('Package installed');
+											iterate();
 										}, authToken, true, force);
 									};
 									if (packageType === 'unnamed') { // If so, installIds will be [packageId]
@@ -350,11 +357,11 @@ loadAppConfig(() => {
 										install();
 									}
 								};
-								if (availability === 'private') {
+								if (availability !== 'public') {
 									let matches = installId.match(regexInstallUser);
 									let username = matches !== null ? matches[1] : '';
 
-									log(credentialsMsg);
+									log(`Please enter your croncle.com account credentials to install "${installId}"`);
 									pollUsername((username) => {
 										getAuthToken(username, (authToken) => {
 											proceed(authToken);
@@ -364,7 +371,9 @@ loadAppConfig(() => {
 									proceed();
 								}
 							});
-						}
+							i++;
+						};
+						iterate();
 					}
 						break;
 					case 'u':
@@ -374,14 +383,13 @@ loadAppConfig(() => {
 					case 'rm':
 					case 'r':
 					case 'uninstall': {
-						let packageId = cmdArgs[1];
-						let flag = cmdArgs[2];
+						let packageId = cmdBaseArgs[1];
 						let save = false;
-						if (packageId === '--save') {
-							packageId = undefined;
+						if (conf = cmdConfig['--save']) {
+							save = getConfigBool(conf[0]);
 						}
-						if (flag === '--save') {
-							save = true;
+						if (conf = cmdConfig['--no-save']) {
+							save = !getConfigBool(conf[0]);
 						}
 						if (packageId === undefined) {
 							if (fs.existsSync(packagesPath)) {
@@ -400,10 +408,11 @@ loadAppConfig(() => {
 							}
 							break;
 						}
-						if (!isValidPackageInstallId(packageId)) {
+						if (!isValidLoosePackageId(packageId)) {
 							log(`Invalid package identifier`);
 							process.exit();
 						}
+						packageId = getMajorInstallId(packageId);
 						let packageType = getPackageTypeFromSid(packageId);
 						let proceed = () => {
 							let installDir = getInstallDirFromInstallId(packageId);
@@ -484,6 +493,11 @@ loadAppConfig(() => {
 								packageId = getMajorInstallId(sid);
 								proceed();
 							});
+						} else if (packageType === 'named') {
+							getPackageSID(packageId.split('_')[1], (sid) => {
+								packageId = getMajorInstallId(sid);
+								proceed();
+							});
 						} else {
 							proceed();
 						}
@@ -509,7 +523,7 @@ loadAppConfig(() => {
 									}
 									packageId = package.sid;
 								}
-								if (!isValidPackageId(packageId)) {
+								if (!isValidLoosePackageId(packageId)) {
 									log(`Invalid package identifier`);
 									process.exit();
 								}
@@ -798,7 +812,7 @@ loadAppConfig(() => {
 							log(JSON.stringify(package, undefined, 2));
 							process.exit();
 						}
-						if (!isValidPackageId(packageId)) {
+						if (!isValidLoosePackageId(packageId)) {
 							log('Invalid package identifier');
 							process.exit();
 						}
@@ -810,7 +824,7 @@ loadAppConfig(() => {
 								let skipped = 0;
 								for (let i = 2; i < cmdArgs.length; i++) {
 									let arg = cmdArgs[i];
-									if(arg in logMap){
+									if (arg in logMap) {
 										skipped++;
 										continue;
 									}
@@ -841,10 +855,11 @@ loadAppConfig(() => {
 									logObj(obj);
 									process.exit();
 								}, undefined, (err) => {
-									let httpCode = err.response.statusCode;
-									if(httpCode === 404){
+									if (err.response && err.response.statusCode === 404) {
 										log('No information available about this package');
 										process.exit();
+									} else {
+										_onGotError(err);
 									}
 								});
 							} else {
@@ -856,10 +871,11 @@ loadAppConfig(() => {
 											logObj(obj);
 											process.exit();
 										}, authToken, (err) => {
-											let httpCode = err.response.statusCode;
-											if(httpCode === 404){
+											if (err.response && err.response.statusCode === 404) {
 												log('No information available about this package');
 												process.exit();
+											} else {
+												_onGotError(err);
 											}
 										});
 									});
@@ -970,13 +986,7 @@ loadAppConfig(() => {
 						}
 						let json = false;
 						if (conf = cmdConfig['json']) {
-							if (conf[0] !== undefined) {
-								if (conf[0] === 'true') {
-									json = true;
-								}
-							} else {
-								json = true;
-							}
+							json = getConfigBool(conf[0]);
 						}
 						let maxDepth = Infinity;
 						if (conf = cmdConfig['depth']) {
@@ -1096,6 +1106,26 @@ loadAppConfig(() => {
 	});
 });
 
+function _onGotError(err) {
+	if (!err.response) {
+		log(panickMsg, err);
+		process.exit();
+	} else {
+		switch (err.response.statusCode) {
+			case 404:
+				console.log(`Server error: 404 Not Found`);
+				break;
+			case 403:
+				console.log(`Server error: 403 Forbidden`);
+				break;
+			case 500:
+				console.log(`Server error: 500 Internal Server Error`);
+				break;
+		}
+		process.exit();
+	}
+}
+
 function log(...args) {
 	console.log.apply(this, args);
 }
@@ -1115,7 +1145,9 @@ function explodeArgs(args) {
 }
 
 function getArgsConfig(args) {
-	let config = {};
+	let config = {
+		[baseArgs]: []
+	};
 	let activeKey = null;
 	for (let i = 0; i < args.length; i++) {
 		let arg = args[i];
@@ -1134,16 +1166,22 @@ function getArgsConfig(args) {
 		} else {
 			if (activeKey !== null) {
 				config[activeKey].push(arg);
+			} else {
+				config[baseArgs].push(arg);
 			}
 		}
 	}
 	return config;
 }
 
-function download(url, filename, onProgress, callback) {
+function download(url, filename, onProgress, callback, onGotError = _onGotError) {
 	const file = fs.createWriteStream(filename);
-	const res = got.stream(url);
-
+	let res;
+	try {
+		res = got.stream(url);
+	} catch (err) {
+		onGotError(err);
+	}
 	res.on('downloadProgress', (progress) => {
 		if (progress.total === undefined) {
 			onProgress({
@@ -1181,34 +1219,38 @@ function pollUsername(callback, defaultOption = '') {
 	});
 }
 
-async function apiPost(formData, callback) {
+async function apiPost(formData, callback, onGotError = _onGotError) {
 	const form = new FormData();
 	for (let key in formData) {
 		if (formData[key] !== undefined) {
 			form.append(key, formData[key]);
 		}
 	}
-	const { body } = await got.post('https://bjspm.croncle.com/api.php', {
-		body: form
-	}, (err) => {
-		if (err) {
-			log(panickMsg, err);
-			process.exit();
-		}
-	});
 	try {
-		let obj = JSON.parse(body);
-		if (obj.error) {
-			log('ERROR', obj.error);
+		const { body } = await got.post('https://bjspm.croncle.com/api.php', {
+			body: form
+		}, (err) => {
+			if (err) {
+				log(panickMsg, err);
+				process.exit();
+			}
+		});
+		try {
+			let obj = JSON.parse(body);
+			if (obj.error) {
+				log('ERROR', obj.error);
+				process.exit();
+			}
+			callback(obj);
+		} catch (e) {
+			log(e, body);
 			process.exit();
 		}
-		callback(obj);
-	} catch (e) {
-		log(e, body);
-		process.exit();
+	} catch (err) {
+		onGotError(err);
 	}
 }
-async function getJson(url, callback, onError) {
+async function getJson(url, callback, onGotError = _onGotError) {
 	try {
 		const { body } = await got.get(url);
 		try {
@@ -1223,12 +1265,7 @@ async function getJson(url, callback, onError) {
 			process.exit();
 		}
 	} catch (err) {
-		if(onError !== undefined){
-			onError(err);
-			return;
-		}
-		log(panickMsg, err);
-		process.exit();
+		onGotError(err);
 	}
 }
 
@@ -1418,6 +1455,9 @@ function getUserPackageSID() {
 }
 
 function getMajorInstallId(installId) {
+	if (regexUserMajor.test(installId)) {
+		return installId;
+	}
 	if (installId.indexOf('@') != -1) {
 		let split = installId.split('@');
 		let bsid = split[1];
@@ -1815,6 +1855,13 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 	}, authToken);
 }
 
+function getConfigBool(str) {
+	if (str === undefined || str === 'true') {
+		return true;
+	}
+	return false;
+}
+
 function getPackageTags(packageId, callback, authToken) {
 	if (packageTagsCache[packageId] !== undefined) {
 		callback(packageTagsCache[packageId]);
@@ -1836,7 +1883,7 @@ function getPackageVersions(packageId, callback, authToken) {
 	let url = webPackagesPath + packageId + '?versions' + (authToken ? `&authToken=${authToken}` : '');
 	let _callback = (obj) => {
 		packageVersionsCache[packageId] = obj;
-		callback(JSON.stringify(obj));
+		callback(obj);
 	};
 	getJson(url, _callback);
 }
@@ -1851,7 +1898,7 @@ function getBjspmPackageJson(packageId, callback, authToken, onError) {
 	getJson(url, callback, onError);
 }
 
-function uploadPackage(path, fileData, authToken, type, access, tags, callback) {
+function uploadPackage(path, fileData, authToken, type, access, tags, callback, onGotError = _onGotError) {
 	log('Uploading package...');
 	getTmpToken(async () => {
 		const form = new FormData();
@@ -1875,29 +1922,33 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback) 
 				form.append(key, formData[key]);
 			}
 		}
-		const { body } = await got.post('https://bjspm.croncle.com/api.php', {
-			body: form
-		}, (err) => {
-			if (err) {
-				log(panickMsg, err);
-				process.exit();
-			}
-		});
 		try {
-			let obj = JSON.parse(body);
-			if (obj.error) {
-				log('ERROR', obj.error);
+			const { body } = await got.post('https://bjspm.croncle.com/api.php', {
+				body: form
+			}, (err) => {
+				if (err) {
+					log(panickMsg, err);
+					process.exit();
+				}
+			});
+			try {
+				let obj = JSON.parse(body);
+				if (obj.error) {
+					log('ERROR', obj.error);
+					process.exit();
+				}
+				callback(obj);
+			} catch (e) {
+				log(e, body);
 				process.exit();
 			}
-			callback(obj);
-		} catch (e) {
-			log(e, body);
-			process.exit();
+		} catch (err) {
+			onGotError(err);
 		}
 	});
 }
 
-function uploadReadme(package, authToken, callback) {
+function uploadReadme(package, authToken, callback, onGotError = _onGotError) {
 	let readmePath = path.resolve(bjspmPath, 'readme.md');
 	log('Uploading readme...');
 	getTmpToken(async () => {
@@ -1914,24 +1965,28 @@ function uploadReadme(package, authToken, callback) {
 				form.append(key, formData[key]);
 			}
 		}
-		const { body } = await got.post('https://bjspm.croncle.com/api.php', {
-			body: form
-		}, (err) => {
-			if (err) {
-				log(panickMsg, err);
-				process.exit();
-			}
-		});
 		try {
-			let obj = JSON.parse(body);
-			if (obj.error) {
-				log('ERROR', obj.error);
+			const { body } = await got.post('https://bjspm.croncle.com/api.php', {
+				body: form
+			}, (err) => {
+				if (err) {
+					log(panickMsg, err);
+					process.exit();
+				}
+			});
+			try {
+				let obj = JSON.parse(body);
+				if (obj.error) {
+					log('ERROR', obj.error);
+					process.exit();
+				}
+				callback(obj);
+			} catch (e) {
+				log(e, body);
 				process.exit();
 			}
-			callback(obj);
-		} catch (e) {
-			log(e, body);
-			process.exit();
+		} catch (err) {
+			onGotError(err);
 		}
 	});
 }
@@ -1983,13 +2038,6 @@ function isValidPackageName(name) {
 	return isString(name) && regexPackageName.test(name);
 }
 
-function isValidPackageId(id) {
-	if (!isString(id)) {
-		return false;
-	}
-	return regexUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
-}
-
 function isValidPackageBaseId(id) {
 	if (!isString(id)) {
 		return false;
@@ -2002,6 +2050,20 @@ function isValidPackageInstallId(id) {
 		return false;
 	}
 	return regexInstallUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
+}
+
+function isValidLoosePackageId(id) {
+	if (!isString(id)) {
+		return false;
+	}
+	return regexUserVersioned.test(id) || regexUserMajor.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
+}
+
+function isValidSpecificPackageId(id) {
+	if (!isString(id)) {
+		return false;
+	}
+	return regexUserVersioned.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
 }
 
 function isValidPackageVersionMajor(major) {
@@ -2575,6 +2637,7 @@ bjspm install <pkg>_<hex_id>
 bjspm install <@user>/<pkg>
 bjspm install <@user>/<pkg>@<tag>
 bjspm install <@user>/<pkg>@<version>
+bjspm install <@user>/<pkg><version_major>
 bjspm install <@user>/<pkg>@<version range>
 
 options: --abs, --force
@@ -2592,7 +2655,10 @@ alias: i, isntall, add
 		case 'uninstall': {
 			log(`
 bjspm uninstall (with no args, in package dir)
-bjspm uninstall <pkg>
+bjspm uninstall <hex_id>
+bjspm uninstall <pkg>_<hex_id>
+bjspm uninstall <@user>/<pkg>@<version>
+bjspm uninstall <@user>/<pkg><version_major>
 
 aliases: u, un, unlink, remove, rm, r
 `);
@@ -2620,7 +2686,7 @@ Sets tag \`latest\` if no --tag specified
 		case 'unpublish': {
 			log(`
 bjspm unpublish (with no args, package dir)
-bjspm unpublish <hex_id>
+bjspm unpublish <pkg_hex_id>
 bjspm unpublish <pkg>_<hex_id>
 bjspm unpublish <@user>/<pkg>
 bjspm unpublish <@user>/<pkg>@<version>
@@ -2680,7 +2746,11 @@ aliases: list, la, ll
 			break;
 		case 'view': {
 			log(`
-bjspm view  [<field>[.subfield]...]
+bjspm view <hex_id> [<field>[.subfield]...]
+bjspm view <pkg>_<hex_id> [<field>[.subfield]...]
+bjspm view <@user>/<pkg> [<field>[.subfield]...]
+bjspm view <@user>/<pkg>@<version> [<field>[.subfield]...]
+bjspm view <@user>/<pkg><version_major>
 
 aliases: v, info, show
 `);
