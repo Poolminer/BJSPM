@@ -104,6 +104,7 @@ function getDefaultPackage() {
 
 function getDefaultAppConfig() {
 	return {
+		username: null,
 		packageCachePath: appDataPath + path.sep + 'packages' + path.sep
 	};
 }
@@ -120,6 +121,8 @@ loadAppConfig(() => {
 				showCommandHelp(cmdArgs[0]);
 			} else {
 				switch (cmdArgs[0]) {
+					case 'create':
+					case 'innit':
 					case 'init': {
 						initPackage();
 					}
@@ -229,22 +232,42 @@ loadAppConfig(() => {
 									if (authToken !== undefined) {
 										uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
 									} else {
+										let query = () => {
+											log(credentialsMsg);
+											pollUsername((username) => {
+												getAuthToken(username, (authToken) => {
+													uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
+												});
+											}, package.username);
+										};
+										authToken = getLoginAuthToken();
+										if(authToken !== null){
+											getUserPackagePermissions(getUserPackageBSID(), authToken, (permissions) => {
+												if(permissions.mayPublish){
+													uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
+												} else {
+													query();
+												}
+											});
+										} else {
+											query();
+										}
+									}
+								} else if (serverConfig.loginRequired) {
+									let loginAuthToken = getLoginAuthToken();
+									if (loginAuthToken !== null) {
+										uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback);
+									} else {
 										log(credentialsMsg);
 										pollUsername((username) => {
 											getAuthToken(username, (authToken) => {
 												uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
 											});
-										}, package.username);
-									}
-								} else if (serverConfig.loginRequired) {
-									log(credentialsMsg);
-									pollUsername((username) => {
-										getAuthToken(username, (authToken) => {
-											uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
 										});
-									});
+									}
 								} else {
-									uploadPackage(zipPath, fileData, '', uploadType, access, tags, uploadCallback);
+									let loginAuthToken = getLoginAuthToken();
+									uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback);
 								}
 							};
 							if (paths.length === 0) {
@@ -270,6 +293,7 @@ loadAppConfig(() => {
 							}
 						}
 						let packageType = getPackageTypeFromSid(packageId);
+						log(credentialsMsg);
 						pollUsername((username) => {
 							getAuthToken(username, (authToken) => {
 								unpublishPackage(packageId, authToken, (result) => {
@@ -528,6 +552,7 @@ loadAppConfig(() => {
 									process.exit();
 								}
 								let packageType = getPackageTypeFromSid(packageId);
+								log(credentialsMsg);
 								pollUsername((username) => {
 									getAuthToken(username, (authToken) => {
 										uploadReadme(packageId, authToken, () => {
@@ -545,89 +570,102 @@ loadAppConfig(() => {
 						break;
 					case 'dist-tag':
 					case 'dist-tags': {
-						if (cmdArgs.length < 3) {
-							showCommandHelp('dist-tag');
-						} else {
-							switch (cmdArgs[1]) {
-								case 'add': {
-									if (cmdArgs.length !== 4) {
-										showCommandHelp('dist-tag');
-									}
-									let packageId = cmdArgs[2];
-									let tag = cmdArgs[3];
-									if (!regexUserVersioned.test(packageId)) {
-										log('Invalid versioned package identifier');
-										process.exit();
-									}
-									if (!isValidPackageTag(tag)) {
-										log('Invalid package tag');
-										process.exit();
-									}
-									checkPackageAvailability(packageId, (availability) => {
-										pollUsername((username) => {
-											getAuthToken(username, (authToken) => {
-												setPackageTags(packageId, [tag], authToken, () => {
-													log('Tag added successfully');
-													process.exit();
-												});
+						switch (cmdArgs[1]) {
+							case 'add': {
+								if (cmdArgs.length !== 4) {
+									showCommandHelp('dist-tag');
+								}
+								let packageId = cmdArgs[2];
+								let tag = cmdArgs[3];
+								if (!regexUserVersioned.test(packageId)) {
+									log('Invalid versioned package identifier');
+									process.exit();
+								}
+								if (!isValidPackageTag(tag)) {
+									log('Invalid package tag');
+									process.exit();
+								}
+								checkPackageAvailability(packageId, (availability) => {
+									log(credentialsMsg);
+									pollUsername((username) => {
+										getAuthToken(username, (authToken) => {
+											setPackageTags(packageId, [tag], authToken, () => {
+												log('Tag added successfully');
+												process.exit();
 											});
 										});
 									});
-								}
-									break;
-								case 'rm': {
-									if (cmdArgs.length !== 4) {
-										showCommandHelp('dist-tag');
-									}
-									let packageId = cmdArgs[2];
-									let tag = cmdArgs[3];
-									if (!regexUser.test(packageId)) {
-										log('Invalid package identifier');
-										process.exit();
-									}
-									if (!isValidPackageTag(tag)) {
-										log('Invalid package tag');
-										process.exit();
-									}
-									checkPackageAvailability(packageId, (availability) => {
-										pollUsername((username) => {
-											getAuthToken(username, (authToken) => {
-												deletePackageTags(packageId, [tag], authToken, () => {
-													log('Tag deleted successfully');
-													process.exit();
-												});
-											});
-										});
-									});
-								}
-									break;
-								case 'ls': {
-									if (cmdArgs.length > 3) {
-										showCommandHelp('dist-tag');
-									}
-									let packageId = cmdArgs[2];
-									if (!regexUserNoVersion.test(packageId)) {
-										log('Invalid base package identifier');
-										process.exit();
-									}
-									checkPackageAvailability(packageId, (availability) => {
-										if (availability === 'public') {
-											getPackageTags(packageId, (tags) => {
-												log(tags.join(', '));
-											});
-										} else {
-											pollUsername((username) => {
-												getAuthToken(username, (authToken) => {
-													getPackageTags(packageId, (tags) => {
-														log(tags.join(', '));
-													}, authToken);
-												});
-											});
-										}
-									});
-								}
-									break;
+								});
 							}
+								break;
+							case 'rm': {
+								if (cmdArgs.length !== 4) {
+									showCommandHelp('dist-tag');
+								}
+								let packageId = cmdArgs[2];
+								let tag = cmdArgs[3];
+								if (!isValidLoosePackageId(packageId)) {
+									log('Invalid package identifier');
+									process.exit();
+								}
+								if (!isValidPackageTag(tag)) {
+									log('Invalid package tag');
+									process.exit();
+								}
+								checkPackageAvailability(packageId, (availability) => {
+									log(credentialsMsg);
+									pollUsername((username) => {
+										getAuthToken(username, (authToken) => {
+											deletePackageTags(packageId, [tag], authToken, () => {
+												log('Tag deleted successfully');
+												process.exit();
+											});
+										});
+									});
+								});
+							}
+								break;
+							case 'ls': {
+								if (cmdArgs.length > 3) {
+									showCommandHelp('dist-tag');
+								}
+								let packageId = cmdArgs[2];
+								if (packageId === undefined) {
+									if (package.sid.length === 0 || getPackageTypeFromSid(package.sid) !== 'user') {
+										log('No package specified');
+										process.exit();
+									} else {
+										packageId = getUserPackageBSID();
+									}
+								}
+								if (!regexUserNoVersion.test(packageId)) {
+									log('Invalid base user package identifier');
+									process.exit();
+								}
+								checkPackageAvailability(packageId, (availability) => {
+									if (availability === 'public') {
+										getPackageTags(packageId, (tags) => {
+											for (let tag in tags) {
+												console.log(`${tag}: ${tags[tag]}`);
+											}
+											process.exit();
+										});
+									} else {
+										log(credentialsMsg);
+										pollUsername((username) => {
+											getAuthToken(username, (authToken) => {
+												getPackageTags(packageId, (tags) => {
+													for (let tag in tags) {
+														console.log(`${tag}: ${tags[tag]}`);
+													}
+													process.exit();
+												}, authToken);
+											});
+										});
+									}
+								});
+							}
+								break;
 						}
 					}
 						break;
@@ -669,6 +707,7 @@ loadAppConfig(() => {
 											if (authToken !== undefined) {
 												engage();
 											} else {
+												log(credentialsMsg);
 												pollUsername((username) => {
 													getAuthToken(username, (_authToken) => {
 														authToken = _authToken;
@@ -682,6 +721,7 @@ loadAppConfig(() => {
 												let regex = /^@([a-z0-9_]{1,16})/;
 												username = regex.exec(packageId)[1];
 											}
+											log(credentialsMsg);
 											pollUsername((username) => {
 												getAuthToken(username, (_authToken) => {
 													authToken = _authToken;
@@ -723,8 +763,9 @@ loadAppConfig(() => {
 													process.exit();
 												}
 												checkPackageAvailability(packageId, (availability) => {
-													log(credentialsMsg);
 													let packageType = getPackageTypeFromSid(packageId);
+
+													log(credentialsMsg);
 													pollUsername((username) => {
 														getAuthToken(username, (authToken) => {
 															setUserPermissions(packageId, user, cmdArgs[2], authToken, () => {
@@ -751,7 +792,7 @@ loadAppConfig(() => {
 											log('Invalid username');
 											process.exit();
 										}
-										getAccessListForUser(user, (obj) => {
+										getPackageAccessListUser(user, (obj) => {
 											let json = JSON.stringify(obj, undefined, 2);
 											log(json);
 											process.exit();
@@ -781,15 +822,16 @@ loadAppConfig(() => {
 									let username = matches !== null ? matches[1] : '';
 									checkPackageAvailability(packageId, (availability) => {
 										if (availability === 'public') {
-											getAccessListForPackage(packageId, user, (obj) => {
+											getPackageCollaborators(packageId, user, (obj) => {
 												let json = JSON.stringify(obj, undefined, 2);
 												log(json);
 												process.exit();
 											});
 										} else {
+											log(credentialsMsg);
 											pollUsername((username) => {
 												getAuthToken(username, (authToken) => {
-													getAccessListForPackage(packageId, user, (obj) => {
+													getPackageCollaborators(packageId, user, (obj) => {
 														let json = JSON.stringify(obj, undefined, 2);
 														log(json);
 														process.exit();
@@ -803,6 +845,81 @@ loadAppConfig(() => {
 								default:
 									showCommandHelp('access');
 							}
+						}
+					}
+						break;
+					case 'user': {
+						if (cmdBaseArgs.length === 1) {
+							showCommandHelp('user');
+						}
+						switch (cmdBaseArgs[1]) {
+							case 'save':
+							case 'store': {
+								pollUsername((username) => {
+									getAuthToken(username, () => {
+										appConfig.username = username;
+										log(`Stored auth token of "${username}" in local app data`);
+										storeAppConfig();
+										process.exit();
+									}, false);
+								});
+							}
+								break;
+							case 'forget': {
+								let username = cmdBaseArgs[2];
+								let deleteAuthToken = (username) => {
+									delete authTokens[username];
+									storeAuthTokens();
+									log(`Auth token of "${username}" deleted from local app data`);
+									process.exit();
+								};
+								if (username !== undefined && isValidUsername(username)) {
+									deleteAuthToken(username);
+								}
+								pollUsername((username) => {
+									if (authTokens[username] !== undefined) {
+										deleteAuthToken(username);
+									} else {
+										log(`User auth token not found`);
+										process.exit();
+									}
+								});
+							}
+								break;
+							case 'signin':
+							case 'login': {
+								pollUsername((username) => {
+									let useAuthStore = true;
+									if (conf = cmdConfig['force']) {
+										useAuthStore = !getConfigBool(conf[0]);
+									}
+									getAuthToken(username, () => {
+										appConfig.username = username;
+										log(`Logged in as "${username}"`);
+										storeAppConfig();
+										process.exit();
+									}, useAuthStore);
+								});
+							}
+								break;
+							case 'signout':
+							case 'logout': {
+								if (appConfig.username === null) {
+									die(`Not logged in`);
+								}
+								let username = appConfig.username;
+								appConfig.username = null;
+								storeAppConfig();
+								die(`No longer logged in as "${username}"`);
+							}
+								break;
+							case 'ls': {
+								for (let user in authTokens) {
+									log(user);
+								}
+								process.exit();
+							}
+								break;
 						}
 					}
 						break;
@@ -865,6 +982,8 @@ loadAppConfig(() => {
 							} else {
 								let matches = packageId.match(regexInstallUser);
 								let username = matches !== null ? matches[1] : '';
+
+								log(credentialsMsg);
 								pollUsername((username) => {
 									getAuthToken(username, (authToken) => {
 										getBjspmPackageJson(packageId, (obj) => {
@@ -1096,7 +1215,9 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
-						log(getEmptySubDirectories('.'));
+						getUserPackagePermissions('01', authTokens['gijs'], (p) => {
+							log(p);
+						});
 						break;
 					default:
 						showQuickHelp();
@@ -1119,7 +1240,7 @@ function _onGotError(err) {
 				console.log(`Server error: 403 Forbidden`);
 				break;
 			case 500:
-				console.log(`Server error: 500 Internal Server Error`);
+				console.log(`Server error: 500 Internal Server Error`, err.response);
 				break;
 		}
 		process.exit();
@@ -1128,6 +1249,11 @@ function _onGotError(err) {
 
 function log(...args) {
 	console.log.apply(this, args);
+}
+
+function die(...args) {
+	console.log.apply(this, args);
+	process.exit();
 }
 
 function explodeArgs(args) {
@@ -1222,7 +1348,7 @@ function pollUsername(callback, defaultOption = '') {
 async function apiPost(formData, callback, onGotError = _onGotError) {
 	const form = new FormData();
 	for (let key in formData) {
-		if (formData[key] !== undefined) {
+		if (formData[key] !== null && formData[key] !== undefined) {
 			form.append(key, formData[key]);
 		}
 	}
@@ -1297,7 +1423,7 @@ function checkPackageAvailability(packageBaseId, callback) {
 	});
 }
 
-function getAccessListForUser(user, callback) {
+function getPackageAccessListUser(user, callback) {
 	apiPost({
 		action: 'GET_PACKAGE_ACCESS_LIST_USER',
 		user: user
@@ -1306,9 +1432,9 @@ function getAccessListForUser(user, callback) {
 	});
 }
 
-function getAccessListForPackage(packageBaseId, user, callback, authToken) {
+function getPackageCollaborators(packageBaseId, user, callback, authToken) {
 	apiPost({
-		action: 'GET_PACKAGE_ACCESS_LIST',
+		action: 'GET_PACKAGE_COLLABORATORS',
 		authToken: authToken,
 		package: packageBaseId,
 		user: user
@@ -1374,6 +1500,16 @@ function deletePackageTags(packageId, tags, authToken, callback) {
 			package: packageId,
 			tags: JSON.stringify(tags)
 		}, callback);
+	});
+}
+
+function getUserPackagePermissions(packageId, authToken, callback) {
+	apiPost({
+		action: 'GET_GRANTED_PERMISSIONS',
+		package: packageId,
+		authToken: authToken
+	}, (obj) => {
+		callback(obj.permissions);
 	});
 }
 
@@ -1452,6 +1588,10 @@ function getAppDataPackagePath(packageId) {
 
 function getUserPackageSID() {
 	return `@${package.username}/${package.name}@${package.version}`;
+}
+
+function getUserPackageBSID() {
+	return `@${package.username}/${package.name}`;
 }
 
 function getMajorInstallId(installId) {
@@ -1918,7 +2058,7 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			tags: JSON.stringify(tags)
 		};
 		for (let key in formData) {
-			if (formData[key] !== undefined) {
+			if (formData[key] !== null && formData[key] !== undefined) {
 				form.append(key, formData[key]);
 			}
 		}
@@ -1961,7 +2101,7 @@ function uploadReadme(package, authToken, callback, onGotError = _onGotError) {
 			readme: fs.createReadStream(readmePath)
 		};
 		for (let key in formData) {
-			if (formData[key] !== undefined) {
+			if (formData[key] !== null && formData[key] !== undefined) {
 				form.append(key, formData[key]);
 			}
 		}
@@ -2300,6 +2440,14 @@ function getDirectoryEntries(dir, relDir = '') {
 	return results;
 }
 
+function getLoginAuthToken() {
+	if (appConfig.username !== null && authTokens[appConfig.username] !== undefined) {
+		return authTokens[appConfig.username];
+	} else {
+		return null;
+	}
+}
+
 function getPackageType() {
 	if (package.name.length !== 0 && package.version.length !== 0 && package.username.length !== 0) { // user package
 		return 'user';
@@ -2448,8 +2596,8 @@ function storeAppConfig() {
 	fs.writeFileSync(appDataConfigPath, json, 'utf8');
 }
 
-function getAuthToken(username, callback) {
-	if (authTokens[username] === undefined) {
+function getAuthToken(username, callback, useAuthStore = true) {
+	if (authTokens[username] === undefined || !useAuthStore) {
 		readline.question(`Password: `, (password) => {
 			if (password.length === 0) {
 				getAuthToken(username, callback);
