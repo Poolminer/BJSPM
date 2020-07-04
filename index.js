@@ -56,6 +56,8 @@ const panickMsg = 'Something went wrong!';
 const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
 const checksumHashFunction = 'sha256';
 const baseArgs = Symbol('cmdConfigBaseArgs');
+const logZipping = false;
+const logUploadThreshold = 0;
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
@@ -207,46 +209,32 @@ loadAppConfig(() => {
 											package.sid = obj.packageId;
 											log('Package published, id: ' + obj.packageId);
 											process.exit();
-											break;
 										case API_STATUS.ERR:
-											if (obj.error === 'Authentication failed') {
-												authTokens[package.username] = undefined;
-												getAuthToken(package.username, (authToken) => {
-													uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
-												});
-											} else {
-												log('Server error: ' + obj.error);
-												process.exit();
-											}
-											break;
+											log('Server error: ' + obj.error);
+											process.exit();
 									}
 									// Manual cleanup
 									cleanupCallback();
 								};
 								if (uploadType === 'user') {
-									let authToken = authTokens[package.username];
-									if (authToken !== undefined) {
-										uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
-									} else {
-										getAuthTokenWithPackagePermissions(getUserPackageBSID(), ['mayPublish'], (token) => {
-											if (token === null) {
-												let promptUsername = undefined;
-												if (authTokens[package.username] === undefined) {
-													promptUsername = package.username;
-												} else if (appConfig.username !== null && authTokens[appConfig.username] === undefined) {
-													promptUsername = appConfig.username;
-												}
-												log(credentialsMsg);
-												pollUsername((username) => {
-													getAuthToken(username, (authToken) => {
-														uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
-													}, false);
-												}, promptUsername);
-											} else {
-												uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback);
+									getAuthTokenWithPackagePermissions(getUserPackageBSID(), ['mayPublish'], (token) => {
+										if (token === null) {
+											let promptUsername = undefined;
+											if (authTokens[package.username] === undefined) {
+												promptUsername = package.username;
+											} else if (appConfig.username !== null && authTokens[appConfig.username] === undefined) {
+												promptUsername = appConfig.username;
 											}
-										});
-									}
+											log(credentialsMsg);
+											pollUsername((username) => {
+												getAuthToken(username, (authToken) => {
+													uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
+												}, false);
+											}, promptUsername);
+										} else {
+											uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback);
+										}
+									});
 								} else if (serverConfig.loginRequired) {
 									let loginAuthToken = getLoginAuthToken();
 									if (loginAuthToken !== null) {
@@ -265,8 +253,10 @@ loadAppConfig(() => {
 								}
 							};
 							if (cmdBaseArgs.length === 1) {
+								log(`Making package archive...`);
 								zipPackage(onZipped);
 							} else {
+								log(`Making file archive...`);
 								zipFiles(cmdBaseArgs.slice(1), onZipped);
 							}
 						});
@@ -503,6 +493,10 @@ loadAppConfig(() => {
 								};
 								uninstall(packageId, () => {
 									log(`Package uninstalled`);
+									if (save) {
+										delete package.dependencies[packageId];
+										storePackage();
+									}
 									process.exit();
 								});
 							});
@@ -1146,7 +1140,7 @@ loadAppConfig(() => {
 							log(`v${package.version}`);
 						} else {
 							let preid = undefined;
-							if(conf === cmdConfig['preid']){
+							if (conf === cmdConfig['preid']) {
 								preid = conf[0];
 							}
 							let arr = ['major', 'minor', 'patch', 'premajor', 'preminor', 'prepatch', 'prerelease'];
@@ -1587,10 +1581,11 @@ function getAuthTokenWithPackagePermissions(packageId, permissions, callback) {
 			tokens.push(authTokens[username]);
 		}
 	}
-	if (appConfig.username !== null) {
+	if (appConfig.username !== null && authTokens[appConfig.username] !== undefined) {
 		tokens.push(authTokens[appConfig.username]);
 	}
-	for (let authToken of authTokens) {
+	for (let username in authTokens) {
+		let authToken = authTokens[username];
 		if (tokens.indexOf(authToken) === -1) {
 			tokens.push(authToken);
 		}
@@ -1600,6 +1595,7 @@ function getAuthTokenWithPackagePermissions(packageId, permissions, callback) {
 		let token = tokens[i++];
 		if (token === undefined) {
 			callback(null);
+			return;
 		}
 		getUserPackagePermissions(packageId, token, (permissionsObj) => {
 			for (let permission of permissions) {
@@ -2054,12 +2050,6 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 				let url = urlArray[dlType];
 				getPackageJson(packageId, (package) => {
 					let prefix = ' -> ';
-					if (urlIndex === 0) {
-						log(`Downloading package "${packageId}"`);
-						if (package.files.length > 0) {
-							log(prefix + package.files[0].path);
-						}
-					}
 					let downloadIndex = 0;
 					let rawTotalSize = 0;
 					for (let file of package.files) {
@@ -2079,12 +2069,23 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 							file.atSizePercentage = accumulatedSize / rawTotalSize;
 						}
 					}
+					if (urlIndex === 0) {
+						log(`Downloading package "${packageId}"`);
+					}
 					if (authToken !== undefined) {
 						if (url.endsWith('?download')) { // hosted on bjspm.croncle.com
 							url += `&authToken=${authToken}`;
 						}
 					}
+					let loggedFirst = false;
 					download(url, zipPath, (status) => {
+						if (status.percentage === undefined) {
+							return;
+						}
+						if (!loggedFirst) {
+							log(prefix + sortedFiles[0].path);
+							loggedFirst = true;
+						}
 						for (let i = downloadIndex; i < sortedFiles.length; i++) {
 							let file = sortedFiles[i];
 							let nextFile = sortedFiles[i + 1];
@@ -2163,7 +2164,7 @@ function getBjspmPackageJson(packageId, callback, authToken, onError) {
 }
 
 function uploadPackage(path, fileData, authToken, type, access, tags, callback, onGotError = _onGotError) {
-	log('Uploading package...');
+	log('Uploading package archive...');
 	getTmpToken(async () => {
 		const form = new FormData();
 		const formData = {
@@ -2187,12 +2188,44 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			}
 		}
 		try {
+			let uploadIndex = 0;
+			let loggedFirst = false;
+			let prefix = ' -> ';
+			let prevPercent = -1;
+			let toLog = fileData.totalSize > logUploadThreshold;
+
 			const { body } = await got.post('https://bjspm.croncle.com/api.php', {
 				body: form
 			}, (err) => {
 				if (err) {
 					log(panickMsg, err);
 					process.exit();
+				}
+			}).on('uploadProgress', progress => {
+				if (progress.percent === undefined) {
+					return;
+				}
+				if (!loggedFirst) {
+					if (toLog) {
+						log(`0% ${prefix} ${fileData[0].path}`);
+					}
+					loggedFirst = true;
+				}
+				for (let i = uploadIndex; i < fileData.length; i++) {
+					let file = fileData[i];
+					let nextFile = fileData[i + 1];
+					if (progress.percent >= file.atSizePercentage) {
+						if (nextFile !== undefined) {
+							let percent = Math.floor((i + 1) / fileData.length * 100);
+							if (percent !== prevPercent) {
+								prevPercent = percent;
+								if (toLog) {
+									log(`${percent}% ${prefix} ${nextFile.path}`);
+								}
+							}
+						}
+						uploadIndex++;
+					}
 				}
 			});
 			try {
@@ -2396,10 +2429,14 @@ function zipFiles(files, callback) {
 				let entries = getDirectoryEntries(file, path.basename(file) + '/');
 				if (entries.length === 0) {
 					if (path.isAbsolute(file)) {
-						log(`Packing ${file}...`);
+						if (logZipping) {
+							log(`Packing ${file}...`);
+						}
 						archive.file(file, { name: path.basename(file) });
 					} else {
-						log(`Packing ${file}...`);
+						if (logZipping) {
+							log(`Packing ${file}...`);
+						}
 						archive.file(path.resolve('.', file), { name: file });
 					}
 				} else {
@@ -2410,7 +2447,9 @@ function zipFiles(files, callback) {
 							path: entry.path,
 							size: entryStats.size
 						});
-						log(`Packing ${entry.path}...`);
+						if (logZipping) {
+							log(`Packing ${entry.path}...`);
+						}
 						archive.file("./" + entry.path, { name: entry.path });
 					}
 				}
@@ -2421,16 +2460,26 @@ function zipFiles(files, callback) {
 					size: stats.size
 				});
 				if (path.isAbsolute(file)) {
-					log(`Packing ${file}...`);
+					if (logZipping) {
+						log(`Packing ${file}...`);
+					}
 					archive.file(file, { name: path.basename(file) });
 				} else {
-					log(`Packing ${file}...`);
+					if (logZipping) {
+						log(`Packing ${file}...`);
+					}
 					archive.file(path.resolve('.', file), { name: file });
 				}
 			}
 		}
 		fileData.sort((a, b) => a.size - b.size);
 		fileData['totalSize'] = totalSize;
+
+		let accumulatedSize = 0;
+		for (let file of fileData) {
+			accumulatedSize += file.size;
+			file.atSizePercentage = accumulatedSize / totalSize;
+		}
 		archive.finalize().then(() => {
 			callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
 		});
@@ -2462,20 +2511,31 @@ function zipPackage(callback) {
 					}
 				}
 				if (skip) {
-					log(`Skipping ${entry.path}`);
+					if (logZipping) {
+						log(`Skipping ${entry.path}`);
+					}
 				} else {
 					let entryStats = fs.statSync(entry.path);
 					totalSize += entryStats.size;
 					fileData.push({
 						path: entry.path,
-						size: entryStats.size
+						size: entryStats.size,
+						atSizePercentage: 0
 					});
-					log(`Packing ${entry.path}...`);
+					if (logZipping) {
+						log(`Packing ${entry.path}...`);
+					}
 					archive.file("./" + entry.path, { name: entry.path });
 				}
 			}
 			fileData.sort((a, b) => a.size - b.size);
 			fileData['totalSize'] = totalSize;
+
+			let accumulatedSize = 0;
+			for (let file of fileData) {
+				accumulatedSize += file.size;
+				file.atSizePercentage = accumulatedSize / totalSize;
+			}
 			archive.finalize().then(() => {
 				callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
 			});
