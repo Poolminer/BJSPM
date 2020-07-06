@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const version = '1.1.0';
+const CRONCLE_MAIN = 'dev.croncle.com';
+const CRONCLE_BJSPM = 'dev.bjspm.croncle.com';
 const fs = require('fs');
 const crypto = require('crypto');
 const archiver = require('archiver');
@@ -27,7 +29,7 @@ const path = require('path');
 const cwdPath = process.cwd() + path.sep;
 const bjspmPath = process.cwd() + path.sep + 'bjspm' + path.sep;
 const packagesPath = bjspmPath + 'packages' + path.sep;
-const webPackagesPath = 'https://bjspm.croncle.com/package/';
+const webPackagesPath = `https://${ CRONCLE_BJSPM }/package/`;
 const packageJsonPath = bjspmPath + 'package.json';
 const regexUser = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
 const regexUserVersioned = /^@[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/;
@@ -57,7 +59,7 @@ const credentialsMsg = 'Please enter your croncle.com account credentials to con
 const checksumHashFunction = 'sha256';
 const baseArgs = Symbol('cmdConfigBaseArgs');
 const logZipping = false;
-const logUploadThreshold = 0;
+const logUploadThreshold = 1 * 8 * 1024 * 1024 * 10;
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
@@ -203,10 +205,18 @@ loadAppConfig(() => {
 								let fileData = result.fileData;
 								let cleanupCallback = result.cleanupCallback;
 
+								let stats = fs.statSync(zipPath);
+								if(stats.size > serverConfig.maxPackageSize){
+									log(`Package archive size exceeds maximum of ${filesize(serverConfig.maxPackageSize)}`);
+									// Manual cleanup
+									cleanupCallback();
+									process.exit();
+								}
 								let uploadCallback = (obj) => {
 									switch (obj.status) {
 										case API_STATUS.OK:
 											package.sid = obj.packageId;
+											storePackage();
 											log('Package published, id: ' + obj.packageId);
 											process.exit();
 										case API_STATUS.ERR:
@@ -252,12 +262,12 @@ loadAppConfig(() => {
 									uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback);
 								}
 							};
+							log(`Making package archive...`);
+							let _logZipping = logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
 							if (cmdBaseArgs.length === 1) {
-								log(`Making package archive...`);
-								zipPackage(onZipped);
+								zipPackage(onZipped, _logZipping);
 							} else {
-								log(`Making file archive...`);
-								zipFiles(cmdBaseArgs.slice(1), onZipped);
+								zipFiles(cmdBaseArgs.slice(1), onZipped, _logZipping);
 							}
 						});
 					}
@@ -354,23 +364,54 @@ loadAppConfig(() => {
 								}
 							}
 						}
-						if ('abs' in cmdConfig) {
-							dlType = 'abs';
+						if (conf = cmdConfig['abs']) {
+							if(getConfigBool(conf[0])){
+								dlType = 'abs';
+							}
 						}
-						if ('force' in cmdConfig) {
-							force = true;
+						if (conf = cmdConfig['force']) {
+							if(getConfigBool(conf[0])){
+								force = true;
+							}
+						}
+						let save = folder === null;
+						let rejectMsg = `Packages installed in a custom directory will not be added as a dependency`;
+						if (conf = cmdConfig['no-save']) {
+							if(!getConfigBool(conf[0])){
+								if(folder !== null){
+									log(rejectMsg);
+								} else {
+									save = true;
+								}
+							}
+						} else if (conf = cmdConfig['save']) {
+							if(getConfigBool(conf[0])){
+								if(folder !== null){
+									log(rejectMsg);
+								} else {
+									save = true;
+								}
+							}
 						}
 						let i = 0;
 						let iterate = () => {
 							if (i === installIds.length) {
+								if(update){
+									if(installIds > 1){
+										log('Packages updated');
+									} else {
+										log('Package updated');
+									}
+								} else {
+									log('Package installed');
+								}
 								process.exit();
 							}
 							let installId = installIds[i];
 							let install = () => {
 								installPackage(installId, folder, dlType, (result) => {
-									log('Package installed');
 									iterate();
-								}, true, force);
+								}, save, force);
 							};
 							if (packageType === 'unnamed') { // If so, installIds will be [packageId]
 								getPackageSID(installId, (sid) => {
@@ -394,10 +435,10 @@ loadAppConfig(() => {
 					case 'uninstall': {
 						let packageId = cmdBaseArgs[1];
 						let save = false;
-						if (conf = cmdConfig['--save']) {
+						if (conf = cmdConfig['save']) {
 							save = getConfigBool(conf[0]);
 						}
-						if (conf = cmdConfig['--no-save']) {
+						if (conf = cmdConfig['no-save']) {
 							save = !getConfigBool(conf[0]);
 						}
 						if (packageId === undefined) {
@@ -407,12 +448,21 @@ loadAppConfig(() => {
 										log(`Could not uninstall package`);
 										process.exit();
 									} else {
+										if (save) {
+											package.dependencies.length = 0;
+											storePackage();
+										}
 										log(`Package uninstalled`);
 										process.exit();
 									}
 								});
 							} else {
 								log(`Package not installed`);
+								if (save && package.dependencies.length !== 0) {
+									package.dependencies.length = 0;
+									storePackage();
+									log(`Cleared dependencies`);
+								}
 								process.exit();
 							}
 							break;
@@ -425,8 +475,16 @@ loadAppConfig(() => {
 						let packageType = getPackageTypeFromSid(packageId);
 						let proceed = () => {
 							let installDir = getInstallDirFromInstallId(packageId);
-							if (package.dependencies.indexOf(packageId) === -1 || !fs.existsSync(installDir)) {
+							let dependencyIndex = package.dependencies.indexOf(packageId);
+
+							if (dependencyIndex === -1 || !fs.existsSync(installDir)) {
 								log(`Package not installed: ${packageId}`);
+
+								if(dependencyIndex !== -1){
+									package.dependencies.splice(dependencyIndex, 1);
+									storePackage();
+									log(`Removed from dependencies`);
+								}
 								process.exit();
 							}
 							getDependencies(package, (dependencies) => {
@@ -492,11 +550,12 @@ loadAppConfig(() => {
 									}
 								};
 								uninstall(packageId, () => {
-									log(`Package uninstalled`);
 									if (save) {
-										delete package.dependencies[packageId];
+										let index = package.dependencies.indexOf(packageId);
+										package.dependencies.splice(index, 1);
 										storePackage();
 									}
+									log(`Package uninstalled`);
 									process.exit();
 								});
 							});
@@ -547,7 +606,10 @@ loadAppConfig(() => {
 											}, false);
 										}, promptUsername);
 									} else {
-										unpublish(token);
+										uploadReadme(packageId, token, () => {
+											log(`Readme updated`);
+											process.exit();
+										});
 									}
 								});
 							}
@@ -691,7 +753,7 @@ loadAppConfig(() => {
 									let listTags = (authToken) => {
 										getPackageTags(packageId, (tags) => {
 											for (let tag in tags) {
-												console.log(`${tag}: ${tags[tag]}`);
+												log(`${tag}: ${tags[tag]}`);
 											}
 											process.exit();
 										}, authToken);
@@ -717,6 +779,8 @@ loadAppConfig(() => {
 								});
 							}
 								break;
+								default:
+									showCommandHelp('dist-tag');
 						}
 					}
 						break;
@@ -734,7 +798,7 @@ loadAppConfig(() => {
 											process.exit();
 											break;
 										}
-										packageId = package.sid;
+										packageId = getPackageBSID();
 									} else if (cmdBaseArgs.length === 3) {
 										packageId = cmdBaseArgs[2];
 									} else {
@@ -752,7 +816,7 @@ loadAppConfig(() => {
 										});
 									}
 									checkPackageAvailability(packageId, (availability) => {
-										getAuthTokenWithPackagePermissions(packageId, ['mayPublicity'], (token) => {
+										getAuthTokenWithPackagePermissions(packageId, ['maySetPublicity'], (token) => {
 											if (token === null) {
 												let promptUsername = getPromptUsername(packageId);
 
@@ -784,7 +848,7 @@ loadAppConfig(() => {
 														process.exit();
 														break;
 													}
-													packageId = package.sid;
+													packageId = getPackageBSID();
 												} else if (cmdBaseArgs.length === 5) {
 													packageId = cmdBaseArgs[4];
 												} else {
@@ -977,6 +1041,8 @@ loadAppConfig(() => {
 								process.exit();
 							}
 								break;
+								default:
+									showCommandHelp('auth');
 						}
 					}
 						break;
@@ -1225,6 +1291,10 @@ loadAppConfig(() => {
 									return;
 								}
 								let listPackages = (dependencies, callback) => {
+									if(dependencies.length === 0){
+										callback();
+										return;
+									}
 									for (let i = 0; i < dependencies.length; i++) {
 										let dependency = dependencies[i];
 										let prefix = '';
@@ -1294,13 +1364,13 @@ function _onGotError(err) {
 	} else {
 		switch (err.response.statusCode) {
 			case 404:
-				console.log(`Server error: 404 Not Found`);
+				log(`Server error: 404 Not Found`);
 				break;
 			case 403:
-				console.log(`Server error: 403 Forbidden`);
+				log(`Server error: 403 Forbidden`);
 				break;
 			case 500:
-				console.log(`Server error: 500 Internal Server Error`, err.response);
+				log(`Server error: 500 Internal Server Error`, err.response);
 				break;
 		}
 		process.exit();
@@ -1413,7 +1483,7 @@ async function apiPost(formData, callback, onGotError = _onGotError) {
 		}
 	}
 	try {
-		const { body } = await got.post('https://bjspm.croncle.com/api.php', {
+		const { body } = await got.post(`https://${ CRONCLE_BJSPM }/api.php`, {
 			body: form
 		}, (err) => {
 			if (err) {
@@ -1691,6 +1761,14 @@ function getUserPackageBSID() {
 	return `@${package.username}/${package.name}`;
 }
 
+function getPackageBSID(){
+	if(getPackageType() === 'user'){
+		return getUserPackageBSID();
+	} else {
+		return package.sid;
+	}
+}
+
 function getMajorInstallId(installId) {
 	if (regexUserMajor.test(installId)) {
 		return installId;
@@ -1830,7 +1908,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						log(`Could not install "${packageId}", error:`);
 						log(`Invalid package version identifier: ${packageVersion}`);
 						process.exit();
-					} else if (matches[3].length !== 0) {
+					} else if (save && matches[3].length !== 0) {
 						log(`Note: only the package's major version will be saved to the dependecies list`);
 					}
 					let versionMajor = semverMajor(packageVersion);
@@ -2194,7 +2272,7 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			let prevPercent = -1;
 			let toLog = fileData.totalSize > logUploadThreshold;
 
-			const { body } = await got.post('https://bjspm.croncle.com/api.php', {
+			const { body } = await got.post(`https://${ CRONCLE_BJSPM }/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
@@ -2263,7 +2341,7 @@ function uploadReadme(package, authToken, callback, onGotError = _onGotError) {
 			}
 		}
 		try {
-			const { body } = await got.post('https://bjspm.croncle.com/api.php', {
+			const { body } = await got.post(`https://${ CRONCLE_BJSPM }/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
@@ -2404,7 +2482,7 @@ function isValidPackage() {
 	}
 }
 
-function zipFiles(files, callback) {
+function zipFiles(files, callback, logZipping) {
 	tmp.dir({ unsafeCleanup: true }, (err, tmpDir, cleanupCallback) => {
 		if (err) {
 			log(panickMsg, err);
@@ -2420,7 +2498,7 @@ function zipFiles(files, callback) {
 		archive.pipe(output);
 
 		for (let file of files) {
-			if (!fs.existsSync) {
+			if (!fs.existsSync(file)) {
 				log(`Non-existent file: "${file}"`);
 				process.exit();
 			}
@@ -2486,7 +2564,7 @@ function zipFiles(files, callback) {
 	});
 }
 
-function zipPackage(callback) {
+function zipPackage(callback, logZipping) {
 	tmp.dir({ unsafeCleanup: true }, (err, path, cleanupCallback) => {
 		if (err) {
 			log(panickMsg, err);
@@ -3068,7 +3146,7 @@ alias: dist-tags
 			break;
 		case 'access': {
 			log(`
-			bjspm access public [<package>]
+bjspm access public [<package>]
 bjspm access restricted [<package>]
 bjspm access set <read-only|read-write> <user> [<package>]
 bjspm access ls-packages [<user>]
