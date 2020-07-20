@@ -201,6 +201,7 @@ loadAppConfig(() => {
 							}
 						}
 						getServerConfig(serverConfig => {
+							let packagePatch = null;
 							let onZipped = result => {
 								let zipPath = result.zipPath;
 								let fileData = result.fileData;
@@ -231,15 +232,15 @@ loadAppConfig(() => {
 									getAuthTokenWithPackagePermissions(getUserPackageBSID(), ['mayPublish'], (token) => {
 										if (token === null) {
 											let promptUsername = undefined;
-											if (authTokens[package.username] === undefined) {
-												promptUsername = package.username;
-											} else if (appConfig.username !== null && authTokens[appConfig.username] === undefined) {
+											if (appConfig.username !== null && authTokens[appConfig.username] === undefined) {
 												promptUsername = appConfig.username;
+											} else if (authTokens[package.username] === undefined) {
+												promptUsername = package.username;
 											}
 											log(credentialsMsg);
 											pollUsername((username) => {
 												getAuthToken(username, (authToken) => {
-													uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
+													uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 												}, false);
 											}, promptUsername);
 										} else {
@@ -263,16 +264,60 @@ loadAppConfig(() => {
 									uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback);
 								}
 							};
-							log(`Making package archive...`);
 							let _logZipping = logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
 							if (cmdBaseArgs.length === 1) {
 								getDirectoryFilePaths(cwdPath, (filePaths) => {
 									let json = JSON.stringify(filePaths, undefined, 2);
 									fs.writeFileSync(filePathsPath, json, 'utf8');
 
-									zipPackage(onZipped, _logZipping);
+									if(uploadType === 'user'){
+										loadJsonFile(filePathsPath, (prevFilePaths) => {
+											if(prevFilePaths !== null){
+												log(`Making package patch...`);
+												let newFilePaths = [];
+												let filePathGroups = [];
+												let addPrevFilePaths = [];
+												let refFilePaths = [];
+
+												for(let hash in filePaths){
+													filePathGroups.push(filePaths[hash]);
+
+													if(hash in prevFilePaths){
+														let filePath = prevFilePaths[hash][0];
+
+														addPrevFilePaths.push(filePath);
+														refFilePaths.push({
+															isPrev: true,
+															filePath: filePath
+														});
+													} else {
+														let filePath = filePaths[hash][0];
+														
+														newFilePaths.push(filePath);
+														refFilePaths.push({
+															isPrev: false,
+															filePath: filePath
+														});
+													}
+												}
+												packagePatch = {
+													filePathGroups: filePathGroups,
+													addPrevFilePaths: addPrevFilePaths,
+													refFilePaths: refFilePaths
+												};
+												zipFiles(newFilePaths, onZipped, _logZipping);
+											} else {
+												log(`Making package archive...`);
+												zipPackage(onZipped, _logZipping);
+											}
+										});
+									} else {
+										log(`Making package archive...`);
+										zipPackage(onZipped, _logZipping);
+									}
 								});
 							} else {
+								log(`Making package archive...`);
 								zipFiles(cmdBaseArgs.slice(1), onZipped, _logZipping);
 							}
 						});
@@ -2269,7 +2314,7 @@ function getBjspmPackageJson(packageId, callback, authToken, onError) {
 	getJson(url, callback, onError);
 }
 
-function uploadPackage(path, fileData, authToken, type, access, tags, callback, onGotError = _onGotError) {
+function uploadPackage(path, fileData, authToken, type, access, tags, callback, onGotError = _onGotError, patch) {
 	log('Uploading package archive...');
 	getTmpToken(async () => {
 		const form = new FormData();
@@ -2286,7 +2331,8 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			license: package.license,
 			type: type,
 			access: access,
-			tags: JSON.stringify(tags)
+			tags: JSON.stringify(tags),
+			patch: JSON.stringify(patch)
 		};
 		for (let key in formData) {
 			if (formData[key] !== null && formData[key] !== undefined) {
