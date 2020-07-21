@@ -244,77 +244,72 @@ loadAppConfig(() => {
 												}, false);
 											}, promptUsername);
 										} else {
-											uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback);
+											uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 										}
 									});
 								} else if (serverConfig.loginRequired) {
 									let loginAuthToken = getLoginAuthToken();
 									if (loginAuthToken !== null) {
-										uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback);
+										uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 									} else {
 										log(credentialsMsg);
 										pollUsername((username) => {
 											getAuthToken(username, (authToken) => {
-												uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback);
+												uploadPackage(zipPath, fileData, authToken, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 											});
 										});
 									}
 								} else {
 									let loginAuthToken = getLoginAuthToken();
-									uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback);
+									uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 								}
 							};
 							let _logZipping = logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
 							if (cmdBaseArgs.length === 1) {
 								getDirectoryFilePaths(cwdPath, (filePaths) => {
-									let json = JSON.stringify(filePaths, undefined, 2);
-									fs.writeFileSync(filePathsPath, json, 'utf8');
+									loadJsonFile(filePathsPath, (prevFilePaths) => {
+										if (prevFilePaths !== null && package.sid.length !== 0) {
+											log(`Making package patch...`);
+											let newFilePaths = [];
+											let filePathGroups = [];
+											let addPrevFilePaths = [];
+											let refFilePaths = [];
 
-									if(uploadType === 'user'){
-										loadJsonFile(filePathsPath, (prevFilePaths) => {
-											if(prevFilePaths !== null){
-												log(`Making package patch...`);
-												let newFilePaths = [];
-												let filePathGroups = [];
-												let addPrevFilePaths = [];
-												let refFilePaths = [];
+											for (let hash in filePaths) {
+												filePathGroups.push(filePaths[hash]);
 
-												for(let hash in filePaths){
-													filePathGroups.push(filePaths[hash]);
+												if (hash in prevFilePaths) {
+													let filePath = prevFilePaths[hash][0];
 
-													if(hash in prevFilePaths){
-														let filePath = prevFilePaths[hash][0];
+													addPrevFilePaths.push(filePath);
+													refFilePaths.push({
+														isPrev: true,
+														filePath: filePath
+													});
+												} else {
+													let filePath = filePaths[hash][0];
 
-														addPrevFilePaths.push(filePath);
-														refFilePaths.push({
-															isPrev: true,
-															filePath: filePath
-														});
-													} else {
-														let filePath = filePaths[hash][0];
-														
-														newFilePaths.push(filePath);
-														refFilePaths.push({
-															isPrev: false,
-															filePath: filePath
-														});
-													}
+													newFilePaths.push(filePath);
+													refFilePaths.push({
+														isPrev: false,
+														filePath: filePath
+													});
 												}
-												packagePatch = {
-													filePathGroups: filePathGroups,
-													addPrevFilePaths: addPrevFilePaths,
-													refFilePaths: refFilePaths
-												};
-												zipFiles(newFilePaths, onZipped, _logZipping);
-											} else {
-												log(`Making package archive...`);
-												zipPackage(onZipped, _logZipping);
 											}
-										});
-									} else {
-										log(`Making package archive...`);
-										zipPackage(onZipped, _logZipping);
-									}
+											packagePatch = {
+												filePathGroups: filePathGroups,
+												addPrevFilePaths: addPrevFilePaths,
+												refFilePaths: refFilePaths,
+												prevPackage: package.sid
+											};
+											zipFiles(newFilePaths, onZipped, _logZipping);
+										} else {
+											log(`Making package archive...`);
+											zipPackage(onZipped, _logZipping);
+										}
+										let json = JSON.stringify(filePaths, undefined, 2);
+										fs.writeFileSync(filePathsPath, json, 'utf8');
+									});
 								});
 							} else {
 								log(`Making package archive...`);
@@ -1391,7 +1386,8 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
-						getDirectoryFilesWithChecksum('.', 'sha256', (entries) => {
+						console.log(JSON.stringify(getDirectoryFiles('C:\\Users\\root\\Desktop\\bjspm_test2\\', void 0, 2)));
+						getDirectoryFilesWithChecksum('C:\\Users\\root\\Desktop\\bjspm_test2\\', 'sha256', (entries) => {
 							let list = {};
 							for (let entry of entries) {
 								let arr = list[entry.checksum];
@@ -2129,7 +2125,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 		}
 		let onDownloaded = (checkIntegrity) => {
 			let onIntegrityCheckOK = () => {
-				if(patchFrom === undefined){
+				if (patchFrom === undefined) {
 					log('Extracting files from package...');
 				} else {
 					log('Extracting new files from patch archive...');
@@ -2332,7 +2328,7 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			type: type,
 			access: access,
 			tags: JSON.stringify(tags),
-			patch: JSON.stringify(patch)
+			patch: patch !== null ? JSON.stringify(patch) : undefined
 		};
 		for (let key in formData) {
 			if (formData[key] !== null && formData[key] !== undefined) {
@@ -2443,11 +2439,17 @@ function uploadReadme(package, authToken, callback, onGotError = _onGotError) {
 function getFileChecksum(path, algorithm, callback) {
 	try {
 		let hash = crypto.createHash(algorithm);
+		let stats = fs.statSync(path);
+
+		if(stats.isDirectory()){
+			callback(hash.digest('hex'));
+			return;
+		}
 		let stream = fs.createReadStream(path);
 
 		stream.on('data', function (data) {
 			hash.update(data, 'utf8');
-		})
+		});
 
 		stream.on('end', function () {
 			callback(hash.digest('hex'));
@@ -2759,8 +2761,9 @@ function getDirectoryFiles(dir, relDir = '') {
 			if (subPaths.length === 0) {
 				results.push({
 					folder: relDir,
-					file: fileName,
-					path: relDir + fileName
+					file: fileName + '/',
+					path: relDir + fileName + '/',
+					isDir: true
 				});
 			} else {
 				results = results.concat(subPaths);
@@ -2769,7 +2772,8 @@ function getDirectoryFiles(dir, relDir = '') {
 			results.push({
 				folder: relDir,
 				file: fileName,
-				path: relDir + fileName
+				path: relDir + fileName,
+				isDir: false
 			});
 		}
 	}
