@@ -33,6 +33,7 @@
     "form-data": "^3.0.0",
     "got": "^11.3.0",
     "minimatch": "^3.0.4",
+    "readline-sync": "^1.4.10",
     "rimraf": "^3.0.2",
     "semver": "^7.2.1",
     "tmp": "^0.1.0"
