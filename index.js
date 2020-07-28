@@ -65,6 +65,7 @@ const logUploadThreshold = 1 * 8 * 1024 * 1024 * 10;
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
+let ignoresLoaded = false;
 let tmpToken = null;
 let packageVersionsCache = {};
 let packageChecksumsCache = {};
@@ -139,6 +140,7 @@ loadAppConfig(() => {
 						let uploadType = 'unnamed';
 						let access = 'public';
 						let tags = [];
+						let force = false;
 
 						if (cmdBaseArgs.length === 1) {
 							if (!isValidPackage()) {
@@ -201,6 +203,9 @@ loadAppConfig(() => {
 										break;
 								}
 							}
+						}
+						if (conf = cmdConfig['force']) {
+							force = getConfigBool(conf[0]);
 						}
 						getServerConfig(serverConfig => {
 							let packagePatch = null;
@@ -270,114 +275,120 @@ loadAppConfig(() => {
 							let _logZipping = logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
 							if (cmdBaseArgs.length === 1) {
 								loadJsonFile(filePathsPath, (prevFilePaths) => {
-									getDirectoryFilePaths(cwdPath, (filePaths) => {
-										let json = JSON.stringify(filePaths, undefined, 2);
-										mksubirSync(filePathsPath);
-										fs.writeFileSync(filePathsPath, json, 'utf8');
+									loadIgnores(() => {
+										getDirectoryFilePaths(cwdPath, (filePaths) => {
+											let json = JSON.stringify(filePaths, undefined, 2);
+											mksubirSync(filePathsPath);
+											fs.writeFileSync(filePathsPath, json, 'utf8');
 
-										if (prevFilePaths !== null) {
-											let proceed = () => {
-												if (package.sid.length !== 0) {
-													increasePackageVersionIfSame();
-													log(`Making package patch...`);
-													let newFilePaths = [];
-													let filePathGroups = [];
-													let addPrevFilePaths = [];
-													let refFilePaths = [];
+											if (prevFilePaths !== null) {
+												let proceed = () => {
+													if (package.sid.length !== 0) {
+														increasePackageVersionIfSame();
+														log(`Making package patch...`);
+														let newFilePaths = [];
+														let filePathGroups = [];
+														let addPrevFilePaths = [];
+														let refFilePaths = [];
 
-													for (let hash in filePaths) {
-														filePathGroups.push(filePaths[hash]);
+														for (let hash in filePaths) {
+															filePathGroups.push(filePaths[hash]);
 
-														if (hash in prevFilePaths) {
-															let filePath = prevFilePaths[hash][0];
+															if (hash in prevFilePaths) {
+																let filePath = prevFilePaths[hash][0];
 
-															addPrevFilePaths.push(filePath);
-															refFilePaths.push({
-																isPrev: true,
-																filePath: filePath
-															});
-														} else {
-															let filePath = filePaths[hash][0];
+																addPrevFilePaths.push(filePath);
+																refFilePaths.push({
+																	isPrev: true,
+																	filePath: filePath
+																});
+															} else {
+																let filePath = filePaths[hash][0];
 
-															newFilePaths.push(filePath);
-															refFilePaths.push({
-																isPrev: false,
-																filePath: filePath
-															});
-														}
-													}
-													packagePatch = {
-														filePathGroups: filePathGroups,
-														addPrevFilePaths: addPrevFilePaths,
-														refFilePaths: refFilePaths,
-														prevPackage: package.sid
-													};
-													zipFiles(newFilePaths, onZipped, _logZipping);
-												} else {
-													log(`Making package archive...`);
-													zipPackage(onZipped, _logZipping);
-												}
-											};
-
-											// Check if the package has been updated since upload, if not, don't upload
-											getDirectoryFilePaths(cwdPath, (filePaths) => {
-												if (prevFilePaths !== null) {
-													let keysCurr = Object.keys(filePaths);
-													let keysPrev = Object.keys(prevFilePaths);
-													let hasChanges = false;
-													let ignores = ['bjspm/filePaths.json', 'bjspm/package.json'];
-
-													for (let hash of keysCurr.slice()) {
-														for (let ignore of ignores) {
-															let index = filePaths[hash].indexOf(ignore);
-															if (index !== -1) {
-																keysCurr.splice(keysCurr.indexOf(hash), 1);
+																newFilePaths.push(filePath);
+																refFilePaths.push({
+																	isPrev: false,
+																	filePath: filePath
+																});
 															}
 														}
-													}
-
-													for (let hash of keysPrev.slice()) {
-														for (let ignore of ignores) {
-															let index = prevFilePaths[hash].indexOf(ignore);
-															if (index !== -1) {
-																keysPrev.splice(keysPrev.indexOf(hash), 1);
-															}
-														}
-													}
-
-													if (keysCurr.length !== keysPrev.length) {
-														hasChanges = true;
+														packagePatch = {
+															filePathGroups: filePathGroups,
+															addPrevFilePaths: addPrevFilePaths,
+															refFilePaths: refFilePaths,
+															prevPackage: package.sid
+														};
+														zipFiles(newFilePaths, onZipped, _logZipping);
 													} else {
-														for (let hash of keysCurr) {
-															if (keysPrev.indexOf(hash) === -1) {
-																hasChanges = true;
-																break;
-															}
-															if (filePaths[hash].length !== prevFilePaths[hash].length) {
-																hasChanges = true;
-																break;
-															}
-															for (let file of filePaths[hash]) {
-																if (prevFilePaths[hash].indexOf(file) === -1) {
-																	hasChanges = true;
-																	break;
+														log(`Making package archive...`);
+														zipPackage(onZipped, _logZipping);
+													}
+												};
+
+												if (!force) {
+													// Check if the package has been updated since upload, if not, don't upload
+													loadIgnores(() => {
+														getDirectoryFilePaths(cwdPath, (filePaths) => {
+															let keysCurr = Object.keys(filePaths);
+															let keysPrev = Object.keys(prevFilePaths);
+															let hasChanges = false;
+															let ignores = ['bjspm/filePaths.json', 'bjspm/package.json'];
+
+															for (let hash of keysCurr.slice()) {
+																for (let ignore of ignores) {
+																	let index = filePaths[hash].indexOf(ignore);
+																	if (index !== -1) {
+																		keysCurr.splice(keysCurr.indexOf(hash), 1);
+																	}
 																}
 															}
-														}
-													}
-													if (!hasChanges) {
-														log('Not uploading, no changes have been made');
-														process.exit();
-													} else {
-														proceed();
-													}
+
+															for (let hash of keysPrev.slice()) {
+																for (let ignore of ignores) {
+																	let index = prevFilePaths[hash].indexOf(ignore);
+																	if (index !== -1) {
+																		keysPrev.splice(keysPrev.indexOf(hash), 1);
+																	}
+																}
+															}
+
+															if (keysCurr.length !== keysPrev.length) {
+																hasChanges = true;
+															} else {
+																for (let hash of keysCurr) {
+																	if (keysPrev.indexOf(hash) === -1) {
+																		hasChanges = true;
+																		break;
+																	}
+																	if (filePaths[hash].length !== prevFilePaths[hash].length) {
+																		hasChanges = true;
+																		break;
+																	}
+																	for (let file of filePaths[hash]) {
+																		if (prevFilePaths[hash].indexOf(file) === -1) {
+																			hasChanges = true;
+																			break;
+																		}
+																	}
+																}
+															}
+															if (!hasChanges) {
+																log('Not uploading, no changes have been made');
+																process.exit();
+															} else {
+																proceed();
+															}
+														}, true);
+													});
+												} else {
+													proceed();
 												}
-											});
-										} else {
-											log(`Making package archive...`);
-											increasePackageVersionIfSame();
-											zipPackage(onZipped, _logZipping);
-										}
+											} else {
+												log(`Making package archive...`);
+												increasePackageVersionIfSame();
+												zipPackage(onZipped, _logZipping);
+											}
+										}, true);
 									});
 								});
 							} else {
@@ -457,10 +468,15 @@ loadAppConfig(() => {
 									installIds.push(cmdBaseArgs[i]);
 								}
 								checkSIDs = true;
-							}
-							for (let dependency of package.dependencies) {
-								if (!fs.existsSync(getInstallDirFromInstallId(dependency))) {
-									installIds.push(dependency);
+
+								for (let dependency of package.dependencies) {
+									if (installIds.indexOf() !== -1) {
+										continue;
+									}
+									if (!fs.existsSync(getInstallDirFromInstallId(dependency))) {
+										installIds.push(dependency);
+										log(`Missing dependency "${dependency}" will be installed as well`);
+									}
 								}
 							}
 							for (let installId of installIds) {
@@ -490,9 +506,7 @@ loadAppConfig(() => {
 							process.exit();
 						}
 						if (conf = cmdConfig['force']) {
-							if (getConfigBool(conf[0])) {
-								force = true;
-							}
+							force = getConfigBool(conf[0]);
 						}
 						let save = folder === null;
 						let rejectMsg = `Packages installed in a custom directory will not be added as a dependency`;
@@ -517,10 +531,10 @@ loadAppConfig(() => {
 						let installedIds = [];
 						let uninstallable = 0;
 						let skippedInstalls = 0;
+						let word = update ? 'updated' : 'installed';
 						let iterate = () => {
 							if (++i === installIds.length) {
-								let word = update ? 'updated' : 'installed';
-								let letter = installedIds > 1 ? 's' : '';
+								let letter = installedIds.length > 1 ? 's' : '';
 
 								if (installedIds.length !== 0) {
 									if (uninstallable !== 0) {
@@ -529,9 +543,7 @@ loadAppConfig(() => {
 										log(`Package${letter} ${word}`);
 									}
 								} else {
-									if (update || skippedInstalls > 1 && installIds.length - skippedInstalls === 0) {
-										log(`Nothing ${word}`);
-									}
+									log(`Nothing ${word}`);
 								}
 								process.exit();
 							}
@@ -539,11 +551,20 @@ loadAppConfig(() => {
 							let packageType = getPackageTypeFromSid(installId);
 
 							let install = () => {
-								installPackage(installId, folder, dlType, (result) => {
+								installPackage(installId, folder, dlType, (result, err, addedToDependencies, dependency) => {
 									if (result !== null) {
 										installedIds.push(installId);
 									} else {
-										uninstallable++;
+										if (err === 'dir_exists') {
+											if (!update) {
+												log(`Not installing ${installId} — already installed`);
+											}
+											if (addedToDependencies) {
+												log(`Added ${installId} to dependencies`);
+											}
+										} else if(err !== 'no_update'){
+											uninstallable++;
+										}
 										skippedInstalls++;
 									}
 									iterate();
@@ -588,7 +609,7 @@ loadAppConfig(() => {
 					case 'r':
 					case 'uninstall': {
 						let packageId = cmdBaseArgs[1];
-						let save = false;
+						let save = true;
 						if (conf = cmdConfig['save']) {
 							save = getConfigBool(conf[0]);
 						}
@@ -611,7 +632,7 @@ loadAppConfig(() => {
 									}
 								});
 							} else {
-								log(`Package not installed`);
+								log(`Error: Package not installed`);
 								if (save && package.dependencies.length !== 0) {
 									package.dependencies.length = 0;
 									storePackage();
@@ -632,7 +653,7 @@ loadAppConfig(() => {
 							let dependencyIndex = package.dependencies.indexOf(packageId);
 
 							if (dependencyIndex === -1 || !fs.existsSync(installDir)) {
-								log(`Package not installed: ${packageId}`);
+								log(`Error: Package not installed`);
 
 								if (dependencyIndex !== -1) {
 									package.dependencies.splice(dependencyIndex, 1);
@@ -1505,16 +1526,17 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
-						pwprompt(`Password: `, { method: 'hide' }).then((password) => {
-							console.log(password);
-						});
+						log(getInstallDirFromInstallId('gijs/test'));
+						// getDependencies(package, (deps) => {
+						// 	console.log(deps);
+						// });
 						// let v = '4.2.0';
 						// if (semverPrerelease(v) === null) {
 						// 	console.log(semverInc(v, 'patch'));
 						// } else {
 						// 	console.log(semverInc(v, 'prerelease'));
 						// }
-						//console.log(JSON.stringify(getDirectoryFiles('C:\\Users\\root\\Desktop\\bjspm_test2\\'), void 0, 2));
+						//console.log(JSON.stringify(getDirectoryFiles('C:\\Users\\root\\Desktop\\bjspm_test5\\', '', [], true), void 0, 2));
 						// getDirectoryFilesWithChecksum('C:\\Users\\root\\Desktop\\bjspm_test2\\', 'sha256', (entries) => {
 						// 	let list = {};
 						// 	for (let entry of entries) {
@@ -1526,7 +1548,7 @@ loadAppConfig(() => {
 						// 	}
 						// 	console.log(JSON.stringify(list, void 0, 2));
 						// });
-						//process.exit();
+						process.exit();
 						break;
 					default:
 						showQuickHelp();
@@ -1929,10 +1951,18 @@ function getPackageChecksums(packageId, callback, authToken, patch) {
 	});
 }
 
-function getPackageSID(hid, callback) {
+function getPackageSID(id, callback) {
+	switch (getPackageTypeFromSid(id)) {
+		case 'named':
+			id = id.split('_')[1];
+			break;
+		case 'user':
+			return id;
+			break;
+	}
 	apiPost({
 		action: 'GET_PACKAGE_SID_FROM_HID',
-		hid: hid
+		hid: id
 	}, (obj) => {
 		callback(obj.sid);
 	});
@@ -2001,6 +2031,9 @@ function getMajorInstallId(installId) {
 }
 
 function getInstallDirFromInstallId(installId) {
+	if(!isValidSemiSpecificPackageId(installId)){
+		return null;
+	}
 	if (installId.indexOf('/') !== -1) {
 		let matches = getMajorInstallId(installId).match(regexInstallUser);
 		let user = matches[1];
@@ -2015,6 +2048,10 @@ function getInstallDirFromInstallId(installId) {
 
 function getPackageFromInstallId(installId, callback) {
 	let packageDir = getInstallDirFromInstallId(installId);
+	if(packageDir === null){
+		return null;
+	}
+
 	let packageFile = path.resolve(packageDir, 'bjspm', 'package.json');
 	if (fs.existsSync(packageFile)) {
 		return loadJsonFile(packageFile, callback);
@@ -2078,9 +2115,9 @@ function existsAsDirectory(filePath) {
 	return stats.isDirectory();
 }
 
-function installPackage(packageId, folder, dlType, callback, save = false, force = false) {
+function installPackage(packageId, folder, dlType, callback, save = false, force = false, update = false) {
 	if (!isValidPackageInstallId(packageId)) {
-		callback(null);
+		callback(null, 'invalid_id');
 		return;
 	}
 	let authToken = undefined;
@@ -2109,7 +2146,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						if (tags[packageVersion] === undefined) {
 							log(`Could not install "${packageId}", error:`);
 							log('No such package tag, available tags:');
-							log(tags.join(', '));
+							log(Object.keys(tags));
 							process.exit();
 						}
 						packageVersion = tags[packageVersion];
@@ -2126,30 +2163,48 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						log(`Invalid package version identifier: ${packageVersion}`);
 						process.exit();
 					} else if (save && matches[3].length !== 0) {
-						log(`Note: only the package's major version will be saved to the dependecies list`);
+						log(`Note: only the package's major version will be saved to the dependencies list`);
 					}
 					let versionMajor = semverMajor(packageVersion);
 					let dependency = `${user}/${packageName}${versionMajor}`;
+					let saveDependency = () => {
+						if (save && package.dependencies.indexOf(dependency) === -1) {
+							package.dependencies.push(dependency);
+							storePackage();
+							return true;
+						}
+						return false;
+					};
 					getPackageFromInstallId(dependency, (pk) => {
+						let targetPath = path.resolve(folder || packagesPath, `${user}`, `${packageName}${versionMajor}`);
 						let proceed = () => {
 							let downloadId = `${packageBaseId}@${packageVersion}`;
-							let targetPath;
 							let download = () => {
-								downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
-									if (save && package.dependencies.indexOf(dependency) === -1) {
-										package.dependencies.push(dependency);
-										storePackage();
-									}
+								installPackageChain(downloadId, dlType, targetPath, (filepath, installed) => {
+									saveDependency();
 									callback({ filepath: filepath, version: packageVersion });
 								}, authToken, force);
 							};
-							targetPath = path.resolve(folder || packagesPath, `${user}`, `${packageName}${versionMajor}`);
 							download();
 						};
+						if (!update && !force && fs.existsSync(getInstallDirFromInstallId(dependency))) {
+							callback(null, 'dir_exists', saveDependency(), dependency);
+							return;
+						}
 						if (pk === null) {
 							proceed();
 						} else if (!force && packageVersion === pk.version) {
-							callback(null);
+							if (update) {
+								installPackageDependencies(dlType, targetPath, (filepath, installed) => {
+									if(installed === 0){
+										callback(null, 'no_update', saveDependency(), dependency);
+									} else {
+										callback({ filepath: filepath, version: packageVersion });
+									}
+								}, force, true);
+							} else {
+								callback(null, 'same_version');
+							}
 						} else {
 							proceed();
 						}
@@ -2160,22 +2215,27 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 			downloadId = packageId;
 			packageBaseId = packageId;
 
+			let saveDependency = () => {
+				if (save && package.dependencies.indexOf(packageBaseId) === -1) {
+					package.dependencies.push(packageBaseId);
+					storePackage();
+					return true;
+				}
+				return false;
+			};
+			if (!force && fs.existsSync(getInstallDirFromInstallId(packageBaseId))) {
+				callback(null, 'dir_exists', saveDependency(), packageBaseId);
+				return;
+			}
 			let targetPath;
 			if (folder !== null) {
 				targetPath = path.resolve(folder, packageBaseId);
 			} else {
 				targetPath = path.resolve(packagesPath, packageBaseId);
 			}
-			if (!force && fs.existsSync(getInstallDirFromInstallId(packageBaseId))) {
-				callback(null);
-				return;
-			}
 			let download = () => {
-				downloadPackageChain(downloadId, dlType, targetPath, (filepath) => {
-					if (save && package.dependencies.indexOf(packageBaseId) === -1) {
-						package.dependencies.push(packageBaseId);
-						storePackage();
-					}
+				installPackageChain(downloadId, dlType, targetPath, (filepath) => {
+					saveDependency();
 					callback({ filepath: filepath });
 				}, authToken, force);
 			};
@@ -2219,31 +2279,39 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 	}, false);
 }
 
-function downloadPackageChain(packageId, dlType, targetPath, callback, authToken, force = false) {
-	downloadPackage(packageId, dlType, targetPath, () => {
-		let packageFile = path.resolve(targetPath, 'bjspm', 'package.json');
-		if (fs.existsSync(packageFile)) {
-			loadJsonFile(packageFile, (obj) => {
-				if (obj !== null) {
-					if (obj.dependencies !== undefined) {
-						let i = 0;
-						let installNext = () => {
-							if (i === obj.dependencies.length) {
-								callback(targetPath);
-								return;
+function installPackageDependencies(dlType, targetPath, callback, force = false, update = false){
+	let installed = 0;
+	let packageFile = path.resolve(targetPath, 'bjspm', 'package.json');
+	if (fs.existsSync(packageFile)) {
+		loadJsonFile(packageFile, (obj) => {
+			if (obj !== null) {
+				if (obj.dependencies !== undefined) {
+					let i = 0;
+					let installNext = () => {
+						if (i === obj.dependencies.length) {
+							callback(targetPath, installed);
+							return;
+						}
+						let dependency = obj.dependencies[i++];
+						installPackage(`${dependency}`, null, dlType, (result) => {
+							if(result !== null){
+								installed++;
 							}
-							let dependency = obj.dependencies[i++];
-							installPackage(`${dependency}`, null, dlType, (result) => {
-								installNext();
-							}, false, force);
-						};
-						installNext();
-					}
+							installNext();
+						}, false, force, update);
+					};
+					installNext();
 				}
-			});
-		} else {
-			callback(targetPath);
-		}
+			}
+		});
+	} else {
+		callback(targetPath, installed);
+	}
+}
+
+function installPackageChain(packageId, dlType, targetPath, callback, authToken, force = false, update = false) {
+	downloadPackage(packageId, dlType, targetPath, () => {
+		installPackageDependencies(dlType, targetPath, callback, force, update);
 	}, authToken);
 }
 
@@ -2305,6 +2373,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 					extractDir = path.resolve(targetPath, 'tmp_' + new Array(16).fill(0).map(() => ((Math.random() * 36) | 0).toString(36)).join(''));
 					fs.mkdirSync(extractDir);
 				}
+				console.log();
 				extract(zipPath, { dir: extractDir }).then(() => {
 					if (patchFrom !== undefined) {
 						log(`Applying patch`);
@@ -2805,6 +2874,13 @@ function isValidLoosePackageId(id) {
 	return regexUserNoVersion.test(id) || regexUserVersioned.test(id) || regexUserMajor.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
 }
 
+function isValidSemiSpecificPackageId(id){
+	if (!isString(id)) {
+		return false;
+	}
+	return regexNamed.test(id) || regexUnnamed.test(id) || regexUserVersioned.test(id) || regexUserMajor.test(id);
+}
+
 function isValidSpecificPackageId(id) {
 	if (!isString(id)) {
 		return false;
@@ -3044,31 +3120,41 @@ function getEmptySubDirectories(dir) {
 	return results;
 }
 
-function getDirectoryFiles(dir, relDir = '', results = []) {
+function getDirectoryFiles(dir, relDir = '', results = [], useIgnores) {
 	let list = fs.readdirSync(dir);
 
 	for (let fileName of list) {
 		let filePath = path.resolve(dir, fileName);
 		let stat = fs.statSync(filePath);
 		if (stat.isDirectory()) {
+			let relPath = relDir + fileName + '/';
+
+			if (useIgnores && shouldIgnore(relPath)) {
+				continue;
+			}
 			let orgLen = results.length;
 
-			getDirectoryFiles(filePath, relDir + fileName + '/', results);
+			getDirectoryFiles(filePath, relDir + fileName + '/', results, useIgnores);
 			if (results.length === orgLen) {
 				let entry = {
 					folder: relDir,
 					file: fileName + '/',
-					path: relDir + fileName + '/',
+					path: relPath,
 					isDir: true
 				};
 				results.push(entry);
 				results[entry.path] = entry;
 			}
 		} else {
+			let relPath = relDir + fileName;
+
+			if (useIgnores && shouldIgnore(relPath)) {
+				continue;
+			}
 			let entry = {
 				folder: relDir,
 				file: fileName,
-				path: relDir + fileName,
+				path: relPath,
 				isDir: false
 			};
 			results.push(entry);
@@ -3078,9 +3164,10 @@ function getDirectoryFiles(dir, relDir = '', results = []) {
 	return results;
 }
 
-function getDirectoryFilesWithChecksum(dir, hashFn, callback) {
-	let entries = getDirectoryFiles(dir);
+function getDirectoryFilesWithChecksum(dir, hashFn, callback, useIgnores) {
+	let entries = getDirectoryFiles(dir, '', [], useIgnores);
 	let done = 0;
+
 	for (let entry of entries) {
 		getFileChecksum(path.resolve(dir, entry.path), hashFn, (checksum) => {
 			entry.checksum = checksum;
@@ -3095,9 +3182,10 @@ function getDirectoryFilesWithChecksum(dir, hashFn, callback) {
 	}
 }
 
-function getDirectoryFilePaths(dir, callback) {
+function getDirectoryFilePaths(dir, callback, useIgnores) {
 	getDirectoryFilesWithChecksum(dir, 'sha256', (entries) => {
 		let list = {};
+
 		for (let entry of entries) {
 			let arr = list[entry.checksum];
 			if (arr === undefined) {
@@ -3106,7 +3194,7 @@ function getDirectoryFilePaths(dir, callback) {
 			arr.push(entry.path);
 		}
 		callback(list);
-	});
+	}, useIgnores);
 }
 
 function getLoginAuthToken() {
@@ -3227,7 +3315,20 @@ function loadAuthTokens(callback) {
 	}
 }
 
+function shouldIgnore(str) {
+	let ignore = false;
+	for (let ignoreGlob of ignoreGlobs) {
+		if (ignoreGlob.match(str)) {
+			ignore = !ignoreGlob.negate;
+		}
+	}
+	return ignore;
+}
+
 function loadIgnores(callback) {
+	if (ignoresLoaded) {
+		callback();
+	}
 	let i = 0;
 	let loadNext = () => {
 		let ignorePath = ignoresPaths[i++];
@@ -3293,7 +3394,8 @@ function storeAppConfig() {
 function getAuthToken(username, callback, useAuthStore = true) {
 	if (authTokens[username] === undefined || !useAuthStore) {
 		let password = readlineSync.question(`Password: `, {
-			hideEchoBack: true
+			hideEchoBack: true,
+			mask: ''
 		});
 		if (password.length === 0) {
 			getAuthToken(username, callback);
