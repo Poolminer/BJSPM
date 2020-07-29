@@ -32,7 +32,8 @@ const bjspmPath = process.cwd() + path.sep + 'bjspm' + path.sep;
 const packagesPath = bjspmPath + 'packages' + path.sep;
 const webPackagesPath = `https://${CRONCLE_BJSPM}/packages/`;
 const packageJsonPath = bjspmPath + 'package.json';
-const filePathsPath = bjspmPath + 'filePaths.json';
+const packageConfigPath = bjspmPath + 'config.json';
+const filePathsPath = bjspmPath + 'files.json';
 const regexUser = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
 const regexUserVersioned = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/;
 const regexUserMajor = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]\d{1,9}$/;
@@ -117,8 +118,15 @@ function getDefaultAppConfig() {
 	};
 }
 
+function getDefaultPackageConfig() {
+	return {
+		
+	};
+}
+
 let appConfig = getDefaultAppConfig();
 let package = getDefaultPackage();
+let packageConfig = getDefaultPackageConfig();
 
 loadAppConfig(() => {
 	loadPackage(() => {
@@ -332,7 +340,7 @@ loadAppConfig(() => {
 															let keysCurr = Object.keys(filePaths);
 															let keysPrev = Object.keys(prevFilePaths);
 															let hasChanges = false;
-															let ignores = ['bjspm/filePaths.json', 'bjspm/package.json'];
+															let ignores = ['bjspm/files.json', 'bjspm/package.json'];
 
 															for (let hash of keysCurr.slice()) {
 																for (let ignore of ignores) {
@@ -532,20 +540,51 @@ loadAppConfig(() => {
 						let uninstallable = 0;
 						let skippedInstalls = 0;
 						let word = update ? 'updated' : 'installed';
+						let previousDependencies;
 						let iterate = () => {
 							if (++i === installIds.length) {
 								let letter = installedIds.length > 1 ? 's' : '';
 
 								if (installedIds.length !== 0) {
+									storeNewPackageNonce();
 									if (uninstallable !== 0) {
 										log(`Package${letter} partially ${word}, ${uninstallable} packages could not be ${word}`);
 									} else {
 										log(`Package${letter} ${word}`);
 									}
+									getRawDependencies(package, (currentDependencies) => {
+										let uninstalledDependencies = previousDependencies.filter(d => currentDependencies.indexOf(d) === -1);
+										let i = 0;
+										let removeNext = () => {
+											let dependency = uninstalledDependencies[i++];
+
+											if(dependency === undefined){
+												process.exit();
+												return;
+											}
+											let dir = getInstallDirFromInstallId(dependency);
+
+											if(fs.existsSync(dir)){
+												deleteDirectory(dir, (err) => {
+													if (err) {
+														log(`Could not remove files of uninstalled dependency "${dependency}"`);
+														removeNext();
+													} else {
+														log(`Removed files of uninstalled dependency "${dependency}"`);
+														removeNext();
+													}
+												});
+											} else {
+												removeNext();
+											}
+										};
+										removeNext();
+									});
 								} else {
 									log(`Nothing ${word}`);
+									process.exit();
 								}
-								process.exit();
+								return;
 							}
 							let installId = installIds[i];
 							let packageType = getPackageTypeFromSid(installId);
@@ -568,25 +607,37 @@ loadAppConfig(() => {
 										skippedInstalls++;
 									}
 									iterate();
-								}, save, force);
+								}, save, force, update);
 							};
 							if (checkSIDs && packageType !== 'user') {
 								checkPackageAvailability(packageId, (availability) => {
-									if (availability === 'public') {
-										getPackageSID(installId, (sid) => {
-											installId = sid;
-											if (installedIds.indexOf(installId) === -1) {
-												install();
-											} else {
-												skippedInstalls++;
-												iterate();
-											}
-										});
-									} else if (availability === 'deleted') {
-										uninstallable++;
-										skippedInstalls++;
-										log(`Package ${packageId} cannot be installed — it has been deleted`);
-										iterate();
+									switch(availability){
+										case 'public': {
+											getPackageSID(installId, (sid) => {
+												installId = sid;
+												if (installedIds.indexOf(installId) === -1) {
+													install();
+												} else {
+													skippedInstalls++;
+													iterate();
+												}
+											});
+										}
+										break;
+										case 'deleted': {
+											uninstallable++;
+											skippedInstalls++;
+											log(`Package ${packageId} cannot be installed — it has been deleted`);
+											iterate();
+										}
+										break;
+										case 'nonexistent': {
+											log(`Package ${packageId} cannot be installed — it does not exist`);
+											iterate();
+										}
+										break;
+										default:
+											iterate();
 									}
 								}, false);
 							} else {
@@ -598,7 +649,10 @@ loadAppConfig(() => {
 								}
 							}
 						};
-						iterate();
+						getRawDependencies(package, (dependencies) => {
+							previousDependencies = dependencies;
+							iterate();
+						});
 					}
 						break;
 					case 'u':
@@ -627,6 +681,7 @@ loadAppConfig(() => {
 											package.dependencies.length = 0;
 											storePackage();
 										}
+										storeNewPackageNonce();
 										log(`Package uninstalled`);
 										process.exit();
 									}
@@ -730,6 +785,7 @@ loadAppConfig(() => {
 										package.dependencies.splice(index, 1);
 										storePackage();
 									}
+									storeNewPackageNonce();
 									log(`Package uninstalled`);
 									process.exit();
 								});
@@ -2099,6 +2155,12 @@ function getDependencies(package, callback, getSubDependencies = true, dependenc
 	iterate();
 }
 
+function getRawDependencies(package, callback, getSubDependencies){
+	getDependencies(package, (dependencies) => {
+		callback(Object.keys(dependencies).slice(dependencies.length));
+	}, getSubDependencies);
+}
+
 function existsAsFile(filePath) {
 	if (!fs.existsSync(filePath)) {
 		return false;
@@ -2370,14 +2432,14 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 					extractDir = targetPath;
 				} else {
 					log('Extracting new files from patch archive...');
-					extractDir = path.resolve(targetPath, 'tmp_' + new Array(16).fill(0).map(() => ((Math.random() * 36) | 0).toString(36)).join(''));
+					extractDir = path.resolve(targetPath, 'tmp_' + randomBase36(16));
 					fs.mkdirSync(extractDir);
 				}
 				console.log();
 				extract(zipPath, { dir: extractDir }).then(() => {
 					if (patchFrom !== undefined) {
 						log(`Applying patch`);
-						let filePathsPath = path.resolve(targetPath, 'bjspm', 'filePaths.json');
+						let filePathsPath = path.resolve(targetPath, 'bjspm', 'files.json');
 						loadJsonFile(filePathsPath, (prevFilePaths) => {
 							getDirectoryFilesWithChecksum(targetPath, 'sha256', (entries) => {
 								for (let hash in patch.files) {
@@ -3389,6 +3451,20 @@ function storePackage() {
 function storeAppConfig() {
 	let json = JSON.stringify(appConfig, undefined, 2);
 	fs.writeFileSync(appDataConfigPath, json, 'utf8');
+}
+
+function storePackageConfig() {
+	let json = JSON.stringify(packageConfig, undefined, 2);
+	fs.writeFileSync(packageConfigPath, json, 'utf8');
+}
+
+function storeNewPackageNonce(){
+	packageConfig.nonce = Math.round(Math.random() * 99999);
+	storePackageConfig();
+}
+
+function randomBase36(length){
+	return new Array(length).fill(0).map(() => ((Math.random() * 36) | 0).toString(36)).join('');
 }
 
 function getAuthToken(username, callback, useAuthStore = true) {
