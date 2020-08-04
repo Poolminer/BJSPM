@@ -250,7 +250,7 @@ loadAppConfig(() => {
 									}
 								};
 								if (uploadType === 'user') {
-									getAuthTokenWithPackagePermissions(getUserPackageBSID(), ['mayPublish'], (token) => {
+									getAuthTokenWithPackagePermissions(getUserPackageBsid(), ['mayPublish'], (token) => {
 										if (token === null) {
 											let promptUsername = undefined;
 											if (appConfig.username !== null && authTokens[appConfig.username] === undefined) {
@@ -359,7 +359,7 @@ loadAppConfig(() => {
 							}
 							packageId = package.sid;
 						} else {
-							if (!isValidSpecificPackageId(packageId)) {
+							if (!isValidSpecificPackageId(packageId) && !isValidPackageBaseId(packageId)) {
 								die('Invalid package identifier');
 							}
 						}
@@ -378,7 +378,7 @@ loadAppConfig(() => {
 								if (token === null) {
 									let matches = packageId.match(regexInstallUser);
 									let promptUsername = undefined;
-	
+
 									if (matches !== null) {
 										if (authTokens[matches[1]] === undefined) {
 											promptUsername = matches[1];
@@ -398,9 +398,13 @@ loadAppConfig(() => {
 								}
 							});
 						};
-						if(packageType === 'named'){
-							getPackageSIDfromHID(packageId, (sid) => {
-								die(`Package ID mismatch: "${packageId}" != "${sid}"`);
+						if (packageType === 'named') {
+							isRegisteredPackageSid(packageId, (ok) => {
+								if (ok) {
+									proceed();
+								} else {
+									die(`Error: Package does not exist`);
+								}
 							});
 						} else {
 							proceed();
@@ -561,7 +565,7 @@ loadAppConfig(() => {
 								checkPackageAvailability(packageId, (availability) => {
 									switch (availability) {
 										case 'public': {
-											getPackageSIDfromHID(installId, (sid) => {
+											getPackageSidfromHid(installId, (sid) => {
 												installId = sid;
 												if (installedIds.indexOf(installId) === -1) {
 													install();
@@ -732,12 +736,12 @@ loadAppConfig(() => {
 							});
 						};
 						if (packageType === 'unnamed') {
-							getPackageSIDfromHID(packageId, (sid) => {
+							getPackageSidfromHid(packageId, (sid) => {
 								packageId = getMajorInstallId(sid);
 								proceed();
 							});
 						} else if (packageType === 'named') {
-							getPackageSIDfromHID(packageId.split('_')[1], (sid) => {
+							getPackageSidfromHid(packageId.split('_')[1], (sid) => {
 								packageId = getMajorInstallId(sid);
 								proceed();
 							});
@@ -808,7 +812,7 @@ loadAppConfig(() => {
 									if (package.sid.length === 0) {
 										die('No package specified');
 									}
-									if (getPackageType() !== 'user') {
+									if (getPackageTypeFromSid(package.sid) !== 'user') {
 										die('Only versioned packages may have tags');
 									}
 									packageId = package.sid;
@@ -822,7 +826,7 @@ loadAppConfig(() => {
 									getAuthTokenWithPackagePermissions(packageId, ['maySetTags'], (token) => {
 										let addTag = (authToken) => {
 											setPackageTags(packageId, [tag], authToken, () => {
-												die('Tag added successfully');
+												die('Tag set successfully');
 											});
 										};
 										if (token === null) {
@@ -856,11 +860,11 @@ loadAppConfig(() => {
 									if (package.sid.length === 0) {
 										die('No package specified');
 									}
-									if (getPackageType() !== 'user') {
+									if (getPackageTypeFromSid(package.sid) !== 'user') {
 										die('Only versioned packages may have tags');
 									}
 									packageId = package.sid;
-								} else if (isValidLoosePackageId(packageId)) {
+								} else if (!isValidLoosePackageId(packageId)) {
 									die('Invalid package identifier');
 								}
 								if (!isValidPackageTag(tag)) {
@@ -869,8 +873,12 @@ loadAppConfig(() => {
 								checkPackageAvailability(packageId, (availability) => {
 									getAuthTokenWithPackagePermissions(packageId, ['maySetTags'], (token) => {
 										let deleteTag = (authToken) => {
-											deletePackageTags(packageId, [tag], authToken, () => {
-												die('Tag deleted successfully');
+											deletePackageTags(packageId, [tag], authToken, (result) => {
+												if (result.deleted !== 0) {
+													die('Tag deleted successfully');
+												} else {
+													die('Tag does not exist');
+												}
 											});
 										};
 										if (token === null) {
@@ -898,7 +906,7 @@ loadAppConfig(() => {
 									if (package.sid.length === 0 || getPackageTypeFromSid(package.sid) !== 'user') {
 										die('No package specified');
 									} else {
-										packageId = getUserPackageBSID();
+										packageId = getUserPackageBsid();
 									}
 								}
 								if (!regexUserNoVersion.test(packageId)) {
@@ -952,7 +960,7 @@ loadAppConfig(() => {
 											die('No package specified');
 											break;
 										}
-										packageId = getPackageBSID();
+										packageId = getPackageBsid();
 									} else if (cmdBaseArgs.length === 3) {
 										packageId = cmdBaseArgs[2];
 									} else {
@@ -999,7 +1007,7 @@ loadAppConfig(() => {
 														die('No package specified');
 														break;
 													}
-													packageId = getPackageBSID();
+													packageId = getPackageBsid();
 												} else if (cmdBaseArgs.length === 5) {
 													packageId = cmdBaseArgs[4];
 												} else {
@@ -1520,7 +1528,7 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
-						log(getInstallDirFromInstallId('gijs/test'));
+						log(isValidLoosePackageId('gijs/test'));
 						// getDependencies(package, (deps) => {
 						// 	console.log(deps);
 						// });
@@ -1689,7 +1697,6 @@ async function apiPost(formData, callback, onGotError = _onGotError) {
 			die(e, body);
 		}
 	} catch (err) {
-		log('apiPost', 6);
 		onGotError(err);
 	}
 }
@@ -1719,8 +1726,8 @@ function getPackageAvailability(packageBaseId, callback) {
 	});
 }
 
-function checkPackageAvailability(packageBaseId, callback, logAndExitOnUnavailable = true) {
-	getPackageAvailability(packageBaseId, (availability) => {
+function checkPackageAvailability(packageId, callback, logAndExitOnUnavailable = true) {
+	getPackageAvailability(packageId, (availability) => {
 		switch (availability) {
 			case 'public':
 				callback('public');
@@ -1837,6 +1844,8 @@ function getUserPackagePermissions(packageId, authToken, callback) {
 }
 
 function getAuthTokenWithPackagePermissions(packageId, permissions, callback) {
+	packageId = getPackageBsidFromSid(packageId);
+
 	let tokens = [];
 	if (packageId.indexOf('/') !== -1) {
 		let username = packageId.split('/')[0];
@@ -1933,7 +1942,7 @@ function getPackageChecksums(packageId, callback, authToken, patch) {
 	});
 }
 
-function getPackageSIDfromHID(id, callback) {
+function getPackageSidfromHid(id, callback) {
 	switch (getPackageTypeFromSid(id)) {
 		case 'named':
 			id = id.split('_')[1];
@@ -1950,6 +1959,16 @@ function getPackageSIDfromHID(id, callback) {
 	});
 }
 
+function isRegisteredPackageSid(sid, callback) {
+	apiPost({
+		action: 'PACKAGE_SID_EQUALS_L',
+		package: sid,
+		str: sid.toLowerCase()
+	}, (obj) => {
+		callback(obj.result);
+	});
+}
+
 function getAppDataPackagePath(packageId, patch) {
 	let fileName = packageId.replace('/', '@');
 	let toShort = packageId.indexOf('@') !== -1 ? packageId.split('@')[1] : packageId;
@@ -1961,11 +1980,11 @@ function getAppDataPackagePath(packageId, patch) {
 	return filePath;
 }
 
-function getUserPackageSID() {
+function getUserPackageSid() {
 	return `${package.username}/${package.name}@${package.version}`;
 }
 
-function getUserPackageBSID() {
+function getUserPackageBsid() {
 	return `${package.username}/${package.name}`;
 }
 
@@ -1989,9 +2008,20 @@ function increasePackageVersionIfSame() {
 	}
 }
 
-function getPackageBSID() {
+function getPackageBsid() {
+	if (package.sid.length !== 0) {
+		return getPackageBsidFromSid(package.sid);
+	}
 	if (getPackageType() === 'user') {
-		return getUserPackageBSID();
+		return getUserPackageBsid();
+	} else {
+		return package.sid;
+	}
+}
+
+function getPackageBsidFromSid(sid) {
+	if (getPackageTypeFromSid(sid) === 'user') {
+		return sid.split('@')[0];
 	} else {
 		return package.sid;
 	}
@@ -3615,7 +3645,7 @@ alias: i, isntall, add`);
 		case 'uninstall': {
 			log(`
 bjspm uninstall (with no args, in package dir)
-bjspm uninstall <hex-id>
+bjspm uninstall <pkg-hex-id>
 bjspm uninstall <pkg>_<hex-id>
 bjspm uninstall <user>/<pkg>@<version>
 bjspm uninstall <user>/<pkg><version-major>
@@ -3643,7 +3673,7 @@ Sets tag \`latest\` if no --tag specified`);
 		case 'unpublish': {
 			log(`
 bjspm unpublish (with no args, package dir)
-bjspm unpublish <pkg-hex-id>
+bjspm unpublish <unn-pkg-id>
 bjspm unpublish <pkg>_<hex-id>
 bjspm unpublish <user>/<pkg>
 bjspm unpublish <user>/<pkg>@<version>`);
