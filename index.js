@@ -565,7 +565,7 @@ loadAppConfig(() => {
 								checkPackageAvailability(packageId, (availability) => {
 									switch (availability) {
 										case 'public': {
-											getPackageSidfromHid(installId, (sid) => {
+											getPackageSidFromHid(installId, (sid) => {
 												installId = sid;
 												if (installedIds.indexOf(installId) === -1) {
 													install();
@@ -736,12 +736,12 @@ loadAppConfig(() => {
 							});
 						};
 						if (packageType === 'unnamed') {
-							getPackageSidfromHid(packageId, (sid) => {
+							getPackageSidFromHid(packageId, (sid) => {
 								packageId = getMajorInstallId(sid);
 								proceed();
 							});
 						} else if (packageType === 'named') {
-							getPackageSidfromHid(packageId.split('_')[1], (sid) => {
+							getPackageSidFromHid(packageId.split('_')[1], (sid) => {
 								packageId = getMajorInstallId(sid);
 								proceed();
 							});
@@ -772,19 +772,88 @@ loadAppConfig(() => {
 										log(credentialsMsg);
 										pollUsername((username) => {
 											getAuthToken(username, (authToken) => {
-												uploadReadme(packageId, authToken, () => {
+												uploadReadme(authToken, () => {
 													die(`Readme updated`);
 												});
 											}, false);
 										}, promptUsername);
 									} else {
-										uploadReadme(packageId, token, () => {
+										uploadReadme(token, () => {
 											die(`Readme updated`);
 										});
 									}
 								});
 							}
 								break;
+								case 'preview-image': {
+									let imgPath = null;
+									let imgNames = ['preview.png', 'preview.jpg', 'preview.jpeg'];
+
+									for(let name of imgNames){
+										let _imgPath = path.resolve(bjspmPath, name);
+										
+										if(existsAsFile(_imgPath)){
+											imgPath = _imgPath;
+											break;
+										}
+									}
+									if (imgPath === null) {
+										die(`No preview image in bjspm directory`);
+									}
+									getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+										if (token === null) {
+											let promptUsername = getPromptUsername(packageId);
+	
+											log(credentialsMsg);
+											pollUsername((username) => {
+												getAuthToken(username, (authToken) => {
+													uploadPreviewImage(imgPath, authToken, () => {
+														die(`Preview image updated`);
+													});
+												}, false);
+											}, promptUsername);
+										} else {
+											uploadPreviewImage(imgPath, token, () => {
+												die(`Preview image updated`);
+											});
+										}
+									});
+								}
+									break;
+									case 'description': {
+										let description = package.description;
+										let newDescription = cmdBaseArgs[2];
+
+										if(newDescription !== undefined){
+											description = newDescription;
+										}
+										if(!isValidPackageDescription(description)){
+											die('Invalid package description');
+										}
+										if(newDescription !== undefined){
+											package.description = newDescription;
+											storePackage();
+										}
+										getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+											if (token === null) {
+												let promptUsername = getPromptUsername(packageId);
+		
+												log(credentialsMsg);
+												pollUsername((username) => {
+													getAuthToken(username, (authToken) => {
+														uploadDescription(description, authToken, () => {
+															die(`Description updated`);
+														});
+													}, false);
+												}, promptUsername);
+											} else {
+												uploadDescription(description, token, () => {
+													die(`Description updated`);
+												});
+											}
+										});
+									}
+									break;
 							default:
 								showCommandHelp('push');
 						}
@@ -993,7 +1062,7 @@ loadAppConfig(() => {
 									});
 								}
 									break;
-								case 'set': {
+								case 'grant': {
 									if (cmdBaseArgs.length === 2) {
 										showCommandHelp('access');
 									} else {
@@ -1023,7 +1092,7 @@ loadAppConfig(() => {
 												checkPackageAvailability(packageId, (availability) => {
 													let setPermissions = (authToken) => {
 														setUserPermissions(packageId, user, cmdBaseArgs[2], authToken, () => {
-															die('User permissions set');
+															die('User permissions granted');
 														});
 													};
 													getAuthTokenWithPackagePermissions(packageId, ['maySetPermissions'], (token) => {
@@ -1049,19 +1118,63 @@ loadAppConfig(() => {
 									}
 								}
 									break;
-								case 'ls-packages': {
-									if (cmdBaseArgs.length !== 3) {
-										showCommandHelp('ls-packages');
-									} else {
-										let user = cmdBaseArgs[2];
-										if (!isValidUsername(user)) {
-											die('Invalid username');
+								case 'revoke': {
+									let user = cmdBaseArgs[2];
+									let packageId;
+									if (cmdBaseArgs.length === 3) { // local package
+										if (package.sid.length === 0) {
+											die('No package specified');
+											break;
 										}
-										getPackageAccessListUser(user, (obj) => {
-											let json = JSON.stringify(obj, undefined, 2);
-											die(json);
-										});
+										packageId = getPackageBsid();
+									} else if (cmdBaseArgs.length === 5) {
+										packageId = cmdBaseArgs[3];
+									} else {
+										showCommandHelp('access');
+										break;
 									}
+									if (!isValidUsername(user)) {
+										die('Invalid username');
+									}
+									if (!isValidPackageBaseId(packageId)) {
+										die('Invalid package base identifier');
+									}
+									checkPackageAvailability(packageId, (availability) => {
+										let setPermissions = (authToken) => {
+											setUserPermissions(packageId, user, 'none', authToken, () => {
+												die('User permissions revoked');
+											});
+										};
+										getAuthTokenWithPackagePermissions(packageId, ['maySetPermissions'], (token) => {
+											if (token === null) {
+												let promptUsername = getPromptUsername(packageId);
+
+												log(credentialsMsg);
+												pollUsername((username) => {
+													getAuthToken(username, (authToken) => {
+														setPermissions(authToken);
+													}, false);
+												}, promptUsername);
+											} else {
+												setPermissions(token);
+											}
+										});
+									});
+								}
+									break;
+								case 'ls-packages': {
+									let user = cmdBaseArgs[2];
+
+									if (user === undefined) {
+										user = appConfig.username;
+									}
+									if (!isValidUsername(user)) {
+										die('Invalid username');
+									}
+									getPackageAccessListUser(user, (obj) => {
+										let json = JSON.stringify(obj, undefined, 2);
+										die(json);
+									});
 								}
 									break;
 								case 'ls-collaborators': {
@@ -1942,7 +2055,7 @@ function getPackageChecksums(packageId, callback, authToken, patch) {
 	});
 }
 
-function getPackageSidfromHid(id, callback) {
+function getPackageSidFromHid(id, callback) {
 	switch (getPackageTypeFromSid(id)) {
 		case 'named':
 			id = id.split('_')[1];
@@ -2386,7 +2499,6 @@ function isPackageInCache(packageId) {
 
 function downloadPackage(packageId, dlType, targetPath, callback, authToken, urlIndex = 0) {
 	mkdirSync(appConfig.packageCachePath);
-	mkdirSync(targetPath);
 
 	let packageType = getPackageTypeFromSid(packageId);
 	let patchFrom;
@@ -2407,6 +2519,8 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 	getPackageChecksums(packageId, (checksums) => {
 		let onDownloaded = (checkIntegrity) => {
 			let onIntegrityCheckOK = () => {
+				mkdirSync(targetPath);
+
 				let extractDir;
 				if (patchFrom === undefined) {
 					log('Extracting files from package...');
@@ -2516,7 +2630,6 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 				}
 				getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
 					if (checksum !== checksums[dlType][checksumHashFunction]) {
-						console.log(checksum, checksums[dlType][checksumHashFunction]);
 						log(`Package integrity check failed`);
 						log(`Deleting package`);
 						fs.unlinkSync(zipPath);
@@ -2795,17 +2908,93 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 	});
 }
 
-function uploadReadme(package, authToken, callback, onGotError = _onGotError) {
+function uploadReadme(authToken, callback, onGotError = _onGotError) {
 	let readmePath = path.resolve(bjspmPath, 'readme.md');
-	log('Uploading readme...');
 	getTmpToken(async () => {
 		const form = new FormData();
 		const formData = {
 			action: 'UPDATE_PACKAGE_README',
 			authToken: authToken,
 			tmpToken: tmpToken,
-			package: package,
+			package: package.sid,
 			readme: fs.createReadStream(readmePath)
+		};
+		for (let key in formData) {
+			if (formData[key] !== null && formData[key] !== undefined) {
+				form.append(key, formData[key]);
+			}
+		}
+		try {
+			const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+				body: form
+			}, (err) => {
+				if (err) {
+					die(panickMsg, err);
+				}
+			});
+			try {
+				let obj = JSON.parse(body);
+				if (obj.error) {
+					die('ERROR', obj.error);
+				}
+				callback(obj);
+			} catch (e) {
+				die(e, body);
+			}
+		} catch (err) {
+			onGotError(err);
+		}
+	});
+}
+
+function uploadPreviewImage(imgPath, authToken, callback, onGotError = _onGotError) {
+	getTmpToken(async () => {
+		const form = new FormData();
+		const formData = {
+			action: 'UPDATE_PACKAGE_PREVIEW_IMG',
+			authToken: authToken,
+			tmpToken: tmpToken,
+			package: package.sid,
+			img: fs.createReadStream(imgPath),
+			ext: path.extname(imgPath).slice(1)
+		};
+		for (let key in formData) {
+			if (formData[key] !== null && formData[key] !== undefined) {
+				form.append(key, formData[key]);
+			}
+		}
+		try {
+			const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+				body: form
+			}, (err) => {
+				if (err) {
+					die(panickMsg, err);
+				}
+			});
+			try {
+				let obj = JSON.parse(body);
+				if (obj.error) {
+					die('ERROR', obj.error);
+				}
+				callback(obj);
+			} catch (e) {
+				die(e, body);
+			}
+		} catch (err) {
+			onGotError(err);
+		}
+	});
+}
+
+function uploadDescription(description, authToken, callback, onGotError = _onGotError) {
+	getTmpToken(async () => {
+		const form = new FormData();
+		const formData = {
+			action: 'UPDATE_PACKAGE_DESCRIPTION',
+			authToken: authToken,
+			tmpToken: tmpToken,
+			package: package.sid,
+			description: description
 		};
 		for (let key in formData) {
 			if (formData[key] !== null && formData[key] !== undefined) {
@@ -3690,7 +3879,8 @@ bjspm version [<newversion> | major | minor | patch | premajor | preminor | prep
 		case 'push': {
 			log(`
 bjspm push readme
-bjspm push preview-image`);
+bjspm push preview-image
+bjspm push description [<new description>]`);
 		}
 			break;
 		case 'dist-tag': {
@@ -3706,7 +3896,8 @@ alias: dist-tags`);
 			log(`
 bjspm access public [<package>]
 bjspm access restricted [<package>]
-bjspm access set <read-only|read-write> <user> [<package>]
+bjspm access grant <read-only|read-write> <user> [<package>]
+bjspm access revoke <user> [<package>]
 bjspm access ls-packages [<user>]
 bjspm access ls-collaborators [<package> [<user>]]`);
 		}
