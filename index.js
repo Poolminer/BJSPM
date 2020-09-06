@@ -72,7 +72,7 @@ const credentialsMsg = 'Please enter your croncle.com account credentials to con
 const checksumHashFunction = 'sha256';
 const baseArgs = Symbol('cmdConfigBaseArgs');
 const logZipping = false;
-const logUploadThreshold = 1 * 8 * 1024 * 1024 * 10;
+const logUploadThreshold = 1024 * 1024 * 10;
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
@@ -300,7 +300,6 @@ loadAppConfig(() => {
 													log(`Making package patch...`);
 													let newFilePaths = [];
 													let filePathGroups = [];
-													let addPrevFilePaths = [];
 													let refFilePaths = [];
 
 													for (let hash in filePaths) {
@@ -309,7 +308,6 @@ loadAppConfig(() => {
 														if (hash in prevFilePaths) {
 															let filePath = prevFilePaths[hash][0];
 
-															addPrevFilePaths.push(filePath);
 															refFilePaths.push({
 																isPrev: true,
 																filePath: filePath
@@ -326,7 +324,6 @@ loadAppConfig(() => {
 													}
 													packagePatch = {
 														filePathGroups: filePathGroups,
-														addPrevFilePaths: addPrevFilePaths,
 														refFilePaths: refFilePaths,
 														prevPackage: package.sid
 													};
@@ -766,6 +763,11 @@ loadAppConfig(() => {
 									die(`No readme file in bjspm directory`);
 								}
 								getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+									let finalize = () => {
+										updateFileChecksum('bjspm/readme.md', checksumHashFunction, () => {
+											die(`Readme updated`);
+										});
+									};
 									if (token === null) {
 										let promptUsername = getPromptUsername(packageId);
 
@@ -773,87 +775,99 @@ loadAppConfig(() => {
 										pollUsername((username) => {
 											getAuthToken(username, (authToken) => {
 												uploadReadme(authToken, () => {
-													die(`Readme updated`);
+													finalize();
 												});
 											}, false);
 										}, promptUsername);
 									} else {
 										uploadReadme(token, () => {
-											die(`Readme updated`);
+											finalize();
 										});
 									}
 								});
 							}
 								break;
-								case 'preview-image': {
-									let imgPath = null;
-									let imgNames = ['preview.png', 'preview.jpg', 'preview.jpeg'];
+							case 'preview-image': {
+								let imgPath = null;
+								let imgName = null;
+								let imgNames = ['preview.png', 'preview.jpg', 'preview.jpeg'];
 
-									for(let name of imgNames){
-										let _imgPath = path.resolve(bjspmPath, name);
-										
-										if(existsAsFile(_imgPath)){
-											imgPath = _imgPath;
-											break;
-										}
+								for (let name of imgNames) {
+									let _imgPath = path.resolve(bjspmPath, name);
+
+									if (existsAsFile(_imgPath)) {
+										imgPath = _imgPath;
+										imgName = name;
+										break;
 									}
-									if (imgPath === null) {
-										die(`No preview image in bjspm directory`);
-									}
-									getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
-										if (token === null) {
-											let promptUsername = getPromptUsername(packageId);
-	
-											log(credentialsMsg);
-											pollUsername((username) => {
-												getAuthToken(username, (authToken) => {
-													uploadPreviewImage(imgPath, authToken, () => {
-														die(`Preview image updated`);
-													});
-												}, false);
-											}, promptUsername);
-										} else {
-											uploadPreviewImage(imgPath, token, () => {
-												die(`Preview image updated`);
-											});
-										}
-									});
 								}
-									break;
-									case 'description': {
-										let description = package.description;
-										let newDescription = cmdBaseArgs[2];
+								if (imgPath === null) {
+									die(`No preview image in bjspm directory`);
+								}
+								getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+									let finalize = () => {
+										updateFileChecksum('bjspm/' + imgName, checksumHashFunction, () => {
+											die(`Preview image updated`);
+										});
+									};
+									if (token === null) {
+										let promptUsername = getPromptUsername(packageId);
 
-										if(newDescription !== undefined){
-											description = newDescription;
-										}
-										if(!isValidPackageDescription(description)){
-											die('Invalid package description');
-										}
-										if(newDescription !== undefined){
-											package.description = newDescription;
-											storePackage();
-										}
-										getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
-											if (token === null) {
-												let promptUsername = getPromptUsername(packageId);
-		
-												log(credentialsMsg);
-												pollUsername((username) => {
-													getAuthToken(username, (authToken) => {
-														uploadDescription(description, authToken, () => {
-															die(`Description updated`);
-														});
-													}, false);
-												}, promptUsername);
-											} else {
-												uploadDescription(description, token, () => {
-													die(`Description updated`);
+										log(credentialsMsg);
+										pollUsername((username) => {
+											getAuthToken(username, (authToken) => {
+												uploadPreviewImage(imgName, authToken, () => {
+													finalize();
 												});
-											}
+											}, false);
+										}, promptUsername);
+									} else {
+										uploadPreviewImage(imgPath, token, () => {
+											finalize();
 										});
 									}
-									break;
+								});
+							}
+								break;
+							case 'description': {
+								let description = package.description;
+								let newDescription = cmdBaseArgs[2];
+
+								if (newDescription !== undefined) {
+									description = newDescription;
+								}
+								if (!isValidPackageDescription(description)) {
+									die('Invalid package description');
+								}
+								if (newDescription !== undefined) {
+									package.description = newDescription;
+									storePackage();
+								}
+								getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+									let finalize = () => {
+										updateFileChecksum(packageJsonPath, checksumHashFunction, () => {
+											die(`Description updated`);
+										});
+									};
+									if (token === null) {
+										let promptUsername = getPromptUsername(packageId);
+
+										log(credentialsMsg);
+										pollUsername((username) => {
+											getAuthToken(username, (authToken) => {
+												uploadDescription(description, authToken, () => {
+													finalize();
+												});
+											}, false);
+										}, promptUsername);
+									} else {
+										uploadDescription(description, token, () => {
+											finalize();
+										});
+									}
+								});
+							}
+								break;
 							default:
 								showCommandHelp('push');
 						}
@@ -1641,7 +1655,11 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
-						log(isValidLoosePackageId('gijs/test'));
+						getPackageChecksums('gijs/test@1.0.1', (checksums) => {
+							log(checksums);
+							process.exit();
+						}, undefined, 'gijs/test@1.0.0');
+						//log(isValidLoosePackageId('gijs/test'));
 						// getDependencies(package, (deps) => {
 						// 	console.log(deps);
 						// });
@@ -1663,7 +1681,7 @@ loadAppConfig(() => {
 						// 	}
 						// 	console.log(JSON.stringify(list, void 0, 2));
 						// });
-						process.exit();
+						//process.exit();
 						break;
 					default:
 						showQuickHelp();
@@ -2040,8 +2058,9 @@ function getPackageDownloadUrls(packageId, callback, authToken, patch) {
 }
 
 function getPackageChecksums(packageId, callback, authToken, patch) {
-	if (packageChecksumsCache[packageId] !== undefined) {
-		callback(packageChecksumsCache[packageId]);
+	let cachekey = packageId + patch === undefined ? '' : patch;
+	if (packageChecksumsCache[cachekey] !== undefined) {
+		callback(packageChecksumsCache[cachekey]);
 		return;
 	}
 	apiPost({
@@ -2050,7 +2069,7 @@ function getPackageChecksums(packageId, callback, authToken, patch) {
 		package: packageId,
 		patch: patch
 	}, (obj) => {
-		packageChecksumsCache[packageId] = obj.checksums;
+		packageChecksumsCache[cachekey] = obj.checksums;
 		callback(obj.checksums);
 	});
 }
@@ -2084,10 +2103,11 @@ function isRegisteredPackageSid(sid, callback) {
 
 function getAppDataPackagePath(packageId, patch) {
 	let fileName = packageId.replace('/', '@');
-	let toShort = packageId.indexOf('@') !== -1 ? packageId.split('@')[1] : packageId;
 
 	if (patch !== undefined) {
-		fileName = `patch_${fileName}_to_${toShort}`;
+		let toShort = patch.indexOf('@') !== -1 ? patch.split('@')[1] : patch;
+
+		fileName = `patch_${fileName}_from_${toShort}`;
 	}
 	let filePath = path.resolve(appConfig.packageCachePath, fileName + '.zip');
 	return filePath;
@@ -2136,7 +2156,7 @@ function getPackageBsidFromSid(sid) {
 	if (getPackageTypeFromSid(sid) === 'user') {
 		return sid.split('@')[0];
 	} else {
-		return package.sid;
+		return sid;
 	}
 }
 
@@ -2275,7 +2295,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						let highestMatch = semverMaxSatisfying(versions, packageVersion);
 						if (highestMatch === null) {
 							log(`Could not install "${packageId}", error:`);
-							die('Could not find highest version');
+							die('Could not find resolve version');
 						}
 						packageVersion = highestMatch;
 					} else if (isValidPackageTag(packageVersion)) {
@@ -2289,7 +2309,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						let highestMatch = semverMaxSatisfying(versions, `${packageVersion}.x`);
 						if (highestMatch === null) {
 							log(`Could not install "${packageId}", error:`);
-							die('Could not find highest version');
+							die('Could not find resolve version');
 						}
 						packageVersion = highestMatch;
 					} else if (!semverValid(packageVersion)) {
@@ -2320,10 +2340,6 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 							};
 							download();
 						};
-						if (!update && !force && fs.existsSync(getInstallDirFromInstallId(dependency))) {
-							callback(null, 'dir_exists', saveDependency(), dependency);
-							return;
-						}
 						if (pk === null) {
 							proceed();
 						} else if (!force && packageVersion === pk.version) {
@@ -2442,10 +2458,7 @@ function installPackageDependencies(dlType, targetPath, callback, force = false,
 }
 
 function installPackageChain(packageId, dlType, targetPath, callback, authToken, force = false, update = false) {
-	downloadPackage(packageId, dlType, targetPath, (targetPath, zipPath) => {
-		if (isCacheFull()) {
-			fs.unlinkSync(zipPath);
-		}
+	downloadPackage(packageId, dlType, targetPath, (targetPath) => {
 		installPackageDependencies(dlType, targetPath, callback, force, update);
 	}, authToken);
 }
@@ -2504,6 +2517,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 	let patchFrom;
 	let patchFiles;
 	let patch;
+	let patchSID = undefined;
 	let currentPackage;
 
 	if (packageType === 'user') {
@@ -2515,165 +2529,182 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 			}
 		}
 	}
-	let zipPath = getAppDataPackagePath(packageId, patchFrom);
-	getPackageChecksums(packageId, (checksums) => {
-		let onDownloaded = (checkIntegrity) => {
-			let onIntegrityCheckOK = () => {
-				mkdirSync(targetPath);
 
-				let extractDir;
-				if (patchFrom === undefined) {
-					log('Extracting files from package...');
-					extractDir = targetPath;
-				} else {
-					log('Extracting new files from patch archive...');
-					extractDir = path.resolve(targetPath, 'tmp_' + randomBase36(16));
-					fs.mkdirSync(extractDir);
-				}
-				console.log();
-				extract(zipPath, { dir: extractDir }).then(() => {
-					if (patchFrom !== undefined) {
-						log(`Applying patch`);
-						let filePathsPath = path.resolve(targetPath, 'bjspm', 'files.json');
-						loadJsonFile(filePathsPath, (prevFilePaths) => {
-							getDirectoryFilesWithChecksum(targetPath, 'sha256', (entries) => {
-								for (let hash in patch.files) {
-									let targetFiles = patch.files[hash].filter(f => !f.endsWith('/'));
-									let currentFiles = entries[hash].filter(f => !f.path.endsWith('/'));
+	getPackageDownloadUrls(packageId, (urls) => {
+		let urlArray = urls[urlIndex];
+		if (urlArray === undefined) {
+			die("The package archive could not be downloaded.");
+		}
+		patchSID = urlArray.patch;
+		let zipPath = getAppDataPackagePath(urlArray.base, patchFrom);
+		let cls = () => {
+			if (isCacheFull()) {
+				fs.unlinkSync(zipPath);
+			}
+		};
+		getPackageChecksums(packageId, (checksums) => {
+			let onDownloaded = (checkIntegrity) => {
+				let onIntegrityCheckOK = () => {
+					mkdirSync(targetPath);
 
-									for (let i = 0; i < targetFiles.length; i++) {
-										let file = targetFiles[i];
-										let filePath = path.resolve(extractDir, file);
+					let extractDir;
+					if (patchFrom === undefined) {
+						log('Extracting files from package...');
+						extractDir = targetPath;
+					} else {
+						log('Extracting new files from patch archive...');
+						extractDir = path.resolve(targetPath, 'tmp_' + randomBase36(16));
+						fs.mkdirSync(extractDir);
+					}
+					extract(zipPath, { dir: extractDir }).then(() => {
+						if (patchFrom !== undefined) {
+							log(`Applying patch`);
+							let filePathsPath = path.resolve(targetPath, 'bjspm', 'files.json');
+							loadJsonFile(filePathsPath, (prevFilePaths) => {
+								getDirectoryFilesWithChecksum(targetPath, 'sha256', (entries) => {
+									for (let hash in patch.files) {
+										let targetFiles = patch.files[hash].filter(f => !f.endsWith('/'));
+										let currentFiles = entries[hash].filter(f => !f.path.endsWith('/'));
 
-										if (fs.existsSync(filePath)) {
-											continue;
-										}
-										mksubirSync(filePath);
-
-										let currentFile = currentFiles[i];
-										if (currentFile === undefined) {
-											if (currentFiles[0] === undefined) {
-												fs.openSync(filePath, 'w');
-											} else {
-												let currentFile0Path = path.resolve(targetPath, currentFiles[0].path);
-												fs.copyFileSync(currentFile0Path, filePath);
-											}
-										} else {
-											let currentFilePath = path.resolve(targetPath, currentFile.path);
-											fs.renameSync(currentFilePath, filePath);
-											currentFile.path = `${extractDir}/${file}`;
-										}
-									}
-								}
-								if (prevFilePaths !== null) {
-									for (let hash in prevFilePaths) {
-										let leftoverFiles = prevFilePaths[hash];
-
-										for (let file of leftoverFiles) {
-											let filePath = path.resolve(targetPath, file);
+										for (let i = 0; i < targetFiles.length; i++) {
+											let file = targetFiles[i];
+											let filePath = path.resolve(extractDir, file);
 
 											if (fs.existsSync(filePath)) {
-												let stats = fs.statSync(filePath);
-												if (stats.isFile()) {
-													let dir = path.dirname(filePath);
-													fs.unlinkSync(filePath);
+												continue;
+											}
+											mksubirSync(filePath);
 
-													let list = fs.readdirSync(dir);
-													if (list.length === 0) {
-														fs.rmdirSync(dir);
-													}
+											let currentFile = currentFiles[i];
+											if (currentFile === undefined) {
+												if (currentFiles[0] === undefined) {
+													fs.openSync(filePath, 'w');
 												} else {
-													let list = fs.readdirSync(filePath);
-													if (list.length === 0) {
-														fs.rmdirSync(filePath);
+													let currentFile0Path = path.resolve(targetPath, currentFiles[0].path);
+													fs.copyFileSync(currentFile0Path, filePath);
+												}
+											} else {
+												let currentFilePath = path.resolve(targetPath, currentFile.path);
+												fs.renameSync(currentFilePath, filePath);
+												currentFile.path = `${extractDir}/${file}`;
+											}
+										}
+									}
+									if (prevFilePaths !== null) {
+										for (let hash in prevFilePaths) {
+											let leftoverFiles = prevFilePaths[hash];
+
+											for (let file of leftoverFiles) {
+												let filePath = path.resolve(targetPath, file);
+
+												if (fs.existsSync(filePath)) {
+													let stats = fs.statSync(filePath);
+													if (stats.isFile()) {
+														let dir = path.dirname(filePath);
+														fs.unlinkSync(filePath);
+
+														let list = fs.readdirSync(dir);
+														if (list.length === 0) {
+															fs.rmdirSync(dir);
+														}
+													} else {
+														let list = fs.readdirSync(filePath);
+														if (list.length === 0) {
+															fs.rmdirSync(filePath);
+														}
 													}
 												}
 											}
 										}
 									}
-								}
-								for (let hash in patch.files) {
-									let targetFiles = patch.files[hash];
+									for (let hash in patch.files) {
+										let targetFiles = patch.files[hash];
 
-									for (let file of targetFiles) {
-										let filePathTo = path.resolve(targetPath, file);
+										for (let file of targetFiles) {
+											let filePathTo = path.resolve(targetPath, file);
 
-										if (file.endsWith('/')) {
-											mkdirSync(filePathTo);
-										} else {
-											let filePathFrom = path.resolve(extractDir, file);
+											if (file.endsWith('/')) {
+												mkdirSync(filePathTo);
+											} else {
+												let filePathFrom = path.resolve(extractDir, file);
 
-											mksubirSync(filePathTo);
-											fs.renameSync(filePathFrom, filePathTo);
+												mksubirSync(filePathTo);
+												fs.renameSync(filePathFrom, filePathTo);
+											}
 										}
 									}
-								}
-								deleteDirectory(extractDir, () => {
-									callback(targetPath, zipPath);
+									deleteDirectory(extractDir, () => {
+										cls();
+										callback(targetPath);
+									});
 								});
 							});
-						});
+						} else {
+							if (patchSID !== undefined) {
+								downloadPackage(patchSID, dlType, targetPath, () => {
+									cls();
+									callback(targetPath);
+								}, authToken);
+							} else {
+								cls();
+								callback(targetPath);
+							}
+						}
+					}, (err) => {
+						log(panickMsg);
+						console.trace();
+						process.exit();
+					});
+				};
+				if (checkIntegrity) {
+					if (patchFrom === undefined) {
+						log(`Verifying package integrity`);
 					} else {
-						callback(targetPath, zipPath);
+						log(`Verifying package patch integrity`);
 					}
-				}, (err) => {
-					log(panickMsg);
-					console.trace();
-					process.exit();
-				});
+					getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
+						if (checksum !== checksums[dlType][checksumHashFunction]) {
+							log(checksum + ' !== ' + checksums[dlType][checksumHashFunction]);
+							log(`Package integrity check failed`);
+							log(`Deleting package`);
+							fs.unlinkSync(zipPath);
+							die(`Aborting`);
+						} else {
+							onIntegrityCheckOK();
+						}
+					});
+				} else {
+					onIntegrityCheckOK();
+				}
 			};
-			if (checkIntegrity) {
+			if (fs.existsSync(zipPath)) {
 				if (patchFrom === undefined) {
+					log(`Package "${urlArray.base}" found in cache`);
 					log(`Verifying package integrity`);
 				} else {
+					log(`Package patch "${currentPackage.sid}" -> "${packageId}" found in cache`);
 					log(`Verifying package patch integrity`);
 				}
 				getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
 					if (checksum !== checksums[dlType][checksumHashFunction]) {
-						log(`Package integrity check failed`);
-						log(`Deleting package`);
+						log(`Integrity check failed, deleting file`);
 						fs.unlinkSync(zipPath);
-						die(`Aborting`);
+						log(`Downloading package`);
+						downloadPackage(packageId, dlType, targetPath, callback, urlIndex);
 					} else {
-						onIntegrityCheckOK();
+						if (patchFrom === undefined) {
+							onDownloaded(false);
+						} else {
+							getPackageJson(packageId, (dlPackage) => {
+								patch = dlPackage;
+								onDownloaded(false);
+							}, authToken, patchFrom);
+						}
 					}
 				});
 			} else {
-				onIntegrityCheckOK();
-			}
-		};
-		if (fs.existsSync(zipPath)) {
-			if (patchFrom === undefined) {
-				log(`Package "${packageId}" found in cache`);
-				log(`Verifying package integrity`);
-			} else {
-				log(`Package patch "${package.sid}" -> "${packageId}" found in cache`);
-				log(`Verifying package patch integrity`);
-			}
-			getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
-				if (checksum !== checksums[dlType][checksumHashFunction]) {
-					log(`Integrity check failed, deleting file`);
-					fs.unlinkSync(zipPath);
-					log(`Downloading package`);
-					downloadPackage(packageId, dlType, targetPath, callback, urlIndex);
-				} else {
-					if (patchFrom === undefined) {
-						onDownloaded(false);
-					} else {
-						getPackageJson(packageId, (dlPackage) => {
-							patch = dlPackage;
-						});
-					}
-				}
-			});
-		} else {
-			getPackageDownloadUrls(packageId, (urls) => {
-				let urlArray = urls[urlIndex];
-				if (urlArray === undefined) {
-					die("The package archive could not be downloaded.");
-				}
 				let url = urlArray[dlType];
-				getPackageJson(packageId, (dlPackage) => {
+				getPackageJson(urlArray.base, (dlPackage) => {
 					let prefix = ' -> ';
 					let downloadIndex = 0;
 					let rawTotalSize = 0;
@@ -2730,7 +2761,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 						if (patchFrom !== undefined) {
 							log(`Downloading package patch "${currentPackage.sid}" -> "${packageId}"`);
 						} else {
-							log(`Downloading package "${packageId}"`);
+							log(`Downloading package "${urlArray.base}"`);
 						}
 					}
 					if (authToken !== undefined) {
@@ -2776,8 +2807,8 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 						}
 					});
 				}, authToken, patchFrom);
-			}, authToken, patchFrom);
-		}
+			}
+		}, authToken, patchFrom);
 	}, authToken, patchFrom);
 }
 
@@ -2855,7 +2886,6 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 		}
 		try {
 			let uploadIndex = 0;
-			let loggedFirst = false;
 			let prefix = ' -> ';
 			let prevPercent = -1;
 			let toLog = fileData.totalSize > logUploadThreshold;
@@ -2867,27 +2897,16 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 					die(panickMsg, err);
 				}
 			}).on('uploadProgress', progress => {
-				if (progress.percent === undefined) {
+				if (progress.percent === undefined || !toLog) {
 					return;
-				}
-				if (!loggedFirst) {
-					if (toLog) {
-						log(`0% ${prefix} ${fileData[0].path}`);
-					}
-					loggedFirst = true;
 				}
 				for (let i = uploadIndex; i < fileData.length; i++) {
 					let file = fileData[i];
-					let nextFile = fileData[i + 1];
 					if (progress.percent >= file.atSizePercentage) {
-						if (nextFile !== undefined) {
-							let percent = Math.floor((i + 1) / fileData.length * 100);
-							if (percent !== prevPercent) {
-								prevPercent = percent;
-								if (toLog) {
-									log(`${percent}% ${prefix} ${nextFile.path}`);
-								}
-							}
+						let percent = Math.floor(progress.percent * 100);
+						if (percent !== prevPercent) {
+							prevPercent = percent;
+							log(`${percent}% ${prefix} ${file.path}`);
 						}
 						uploadIndex++;
 					}
@@ -2947,7 +2966,8 @@ function uploadReadme(authToken, callback, onGotError = _onGotError) {
 	});
 }
 
-function uploadPreviewImage(imgPath, authToken, callback, onGotError = _onGotError) {
+function uploadPreviewImage(imgName, authToken, callback, onGotError = _onGotError) {
+	let imgPath = path.resolve(bjspmPath, imgName);
 	getTmpToken(async () => {
 		const form = new FormData();
 		const formData = {
@@ -3021,6 +3041,41 @@ function uploadDescription(description, authToken, callback, onGotError = _onGot
 		} catch (err) {
 			onGotError(err);
 		}
+	});
+}
+
+function updateFileChecksum(localPath, algorithm, callback) {
+	let absPath = path.resolve(cwdPath, localPath);
+	if (!fs.existsSync(absPath)) {
+		callback();
+		return;
+	}
+	loadJsonFile(filePathsPath, (filePaths) => {
+		if (filePaths === null) {
+			callback();
+			return;
+		}
+		let checksums = Object.keys(filePaths);
+		for (let checksum of checksums) {
+			let fp = filePaths[checksum];
+			let index = fp.indexOf(localPath);
+
+			if (index === -1) {
+				continue;
+			}
+			fp.splice(index, 1);
+			if (fp.length === 0) {
+				delete filePaths[checksum];
+			}
+		}
+		getFileChecksum(absPath, algorithm, (checksum) => {
+			let arr = filePaths[checksum] ? filePaths[checksum] : [localPath];
+			filePaths[checksum] = arr;
+
+			let json = JSON.stringify(filePaths, undefined, 2);
+			fs.writeFileSync(filePathsPath, json, 'utf8');
+			callback();
+		});
 	});
 }
 
