@@ -43,15 +43,17 @@ const packagesPath = bjspmPath + 'packages' + path.sep;
 const webPackagesPath = `https://${CRONCLE_BJSPM}/packages/`;
 const packageJsonPath = bjspmPath + 'package.json';
 const packageConfigPath = bjspmPath + 'config.json';
+const packageBaseModuleJSPath = bjspmPath + 'index.js';
+const packageBaseModuleTSPath = bjspmPath + 'index.ts';
 const filePathsPath = bjspmPath + 'files.json';
-const regexUser = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
-const regexUserVersioned = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/;
-const regexUserMajor = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]\d{1,9}$/;
-const regexUserNoVersion = /^[a-z0-9_]{1,16}\/[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]$/;
-const regexInstallUser = /^([a-z0-9_]{1,16})\/([a-z0-9][a-z0-9_\-\.]{0,240}[a-z])@?(.*)$/;
-const regexNamed = /^[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]_[A-F0-9]{1,7}$/;
+const regexUser = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
+const regexUserVersioned = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/;
+const regexUserMajor = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z]\d{1,9}$/;
+const regexUserNoVersion = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z]$/;
+const regexInstallUser = /^([a-z0-9_]{1,16})\/([a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-z])@?(.*)$/;
+const regexNamed = /^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z]_[A-F0-9]{1,7}$/;
 const regexUnnamed = /^[A-F0-9]{1,7}$/;
-const regexPackageName = /^[a-z0-9][a-z0-9_\-\.]{0,240}[a-z]$/;
+const regexPackageName = /^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-z]$/;
 const regexMajorVersion = /^\d{1,9}$/;
 const ignoresPaths = [
 	bjspmPath + 'ignore.txt',
@@ -66,7 +68,7 @@ const API_STATUS = {
 }
 const licences = ['', '0BSD', 'AAL', 'Abstyles', 'Adobe-2006', 'Adobe-Glyph', 'ADSL', 'AFL-1.1', 'AFL-1.2', 'AFL-2.0', 'AFL-2.1', 'AFL-3.0', 'Afmparse', 'AGPL-1.0-only', 'AGPL-1.0-or-later', 'AGPL-3.0-only', 'AGPL-3.0-or-later', 'Aladdin', 'AMDPLPA', 'AML', 'AMPAS', 'ANTLR-PD', 'Apache-1.0', 'Apache-1.1', 'Apache-2.0', 'APAFML', 'APL-1.0', 'APSL-1.0', 'APSL-1.1', 'APSL-1.2', 'APSL-2.0', 'Artistic-1.0', 'Artistic-1.0-cl8', 'Artistic-1.0-Perl', 'Artistic-2.0', 'Bahyph', 'Barr', 'Beerware', 'BitTorrent-1.0', 'BitTorrent-1.1', 'blessing', 'BlueOak-1.0.0', 'Borceux', 'BSD-1-Clause', 'BSD-2-Clause', 'BSD-2-Clause-FreeBSD', 'BSD-2-Clause-NetBSD', 'BSD-2-Clause-Patent', 'BSD-3-Clause', 'BSD-3-Clause-Attribution', 'BSD-3-Clause-Clear', 'BSD-3-Clause-LBNL', 'BSD-3-Clause-No-Nuclear-License', 'BSD-3-Clause-No-Nuclear-License-2014', 'BSD-3-Clause-No-Nuclear-Warranty', 'BSD-3-Clause-Open-MPI', 'BSD-4-Clause', 'BSD-4-Clause-UC', 'BSD-Protection', 'BSD-Source-Code', 'BSL-1.0', 'bzip2-1.0.5', 'bzip2-1.0.6', 'Caldera', 'CATOSL-1.1', 'CC-BY-1.0', 'CC-BY-2.0', 'CC-BY-2.5', 'CC-BY-3.0', 'CC-BY-4.0', 'CC-BY-NC-1.0', 'CC-BY-NC-2.0', 'CC-BY-NC-2.5', 'CC-BY-NC-3.0', 'CC-BY-NC-4.0', 'CC-BY-NC-ND-1.0', 'CC-BY-NC-ND-2.0', 'CC-BY-NC-ND-2.5', 'CC-BY-NC-ND-3.0', 'CC-BY-NC-ND-4.0', 'CC-BY-NC-SA-1.0', 'CC-BY-NC-SA-2.0', 'CC-BY-NC-SA-2.5', 'CC-BY-NC-SA-3.0', 'CC-BY-NC-SA-4.0', 'CC-BY-ND-1.0', 'CC-BY-ND-2.0', 'CC-BY-ND-2.5', 'CC-BY-ND-3.0', 'CC-BY-ND-4.0', 'CC-BY-SA-1.0', 'CC-BY-SA-2.0', 'CC-BY-SA-2.5', 'CC-BY-SA-3.0', 'CC-BY-SA-4.0', 'CC-PDDC', 'CC0-1.0', 'CDDL-1.0', 'CDDL-1.1', 'CDLA-Permissive-1.0', 'CDLA-Sharing-1.0', 'CECILL-1.0', 'CECILL-1.1', 'CECILL-2.0', 'CECILL-2.1', 'CECILL-B', 'CECILL-C', 'CERN-OHL-1.1', 'CERN-OHL-1.2', 'ClArtistic', 'CNRI-Jython', 'CNRI-Python', 'CNRI-Python-GPL-Compatible', 'Condor-1.1', 'copyleft-next-0.3.0', 'copyleft-next-0.3.1', 'CPAL-1.0', 'CPL-1.0', 'CPOL-1.02', 'Crossword', 'CrystalStacker', 'CUA-OPL-1.0', 'Cube', 'curl', 'D-FSL-1.0', 'diffmark', 'DOC', 'Dotseqn', 'DSDP', 'dvipdfm', 'ECL-1.0', 'ECL-2.0', 'EFL-1.0', 'EFL-2.0', 'eGenix', 'Entessa', 'EPL-1.0', 'EPL-2.0', 'ErlPL-1.1', 'etalab-2.0', 'EUDatagrid', 'EUPL-1.0', 'EUPL-1.1', 'EUPL-1.2', 'Eurosym', 'Fair', 'Frameworx-1.0', 'FreeImage', 'FSFAP', 'FSFUL', 'FSFULLR', 'FTL', 'GFDL-1.1-only', 'GFDL-1.1-or-later', 'GFDL-1.2-only', 'GFDL-1.2-or-later', 'GFDL-1.3-only', 'GFDL-1.3-or-later', 'Giftware', 'GL2PS', 'Glide', 'Glulxe', 'gnuplot', 'GPL-1.0-only', 'GPL-1.0-or-later', 'GPL-2.0-only', 'GPL-2.0-or-later', 'GPL-3.0-only', 'GPL-3.0-or-later', 'gSOAP-1.3b', 'HaskellReport', 'HPND', 'HPND-sell-variant', 'IBM-pibs', 'ICU', 'IJG', 'ImageMagick', 'iMatix', 'Imlib2', 'Info-ZIP', 'Intel', 'Intel-ACPI', 'Interbase-1.0', 'IPA', 'IPL-1.0', 'ISC', 'JasPer-2.0', 'JPNIC', 'JSON', 'LAL-1.2', 'LAL-1.3', 'Latex2e', 'Leptonica', 'LGPL-2.0-only', 'LGPL-2.0-or-later', 'LGPL-2.1-only', 'LGPL-2.1-or-later', 'LGPL-3.0-only', 'LGPL-3.0-or-later', 'LGPLLR', 'Libpng', 'libpng-2.0', 'libtiff', 'LiLiQ-P-1.1', 'LiLiQ-R-1.1', 'LiLiQ-Rplus-1.1', 'Linux-OpenIB', 'LPL-1.0', 'LPL-1.02', 'LPPL-1.0', 'LPPL-1.1', 'LPPL-1.2', 'LPPL-1.3a', 'LPPL-1.3c', 'MakeIndex', 'MirOS', 'MIT', 'MIT-0', 'MIT-advertising', 'MIT-CMU', 'MIT-enna', 'MIT-feh', 'MITNFA', 'Motosoto', 'mpich2', 'MPL-1.0', 'MPL-1.1', 'MPL-2.0', 'MPL-2.0-no-copyleft-exception', 'MS-PL', 'MS-RL', 'MTLL', 'MulanPSL-1.0', 'Multics', 'Mup', 'NASA-1.3', 'Naumen', 'NBPL-1.0', 'NCSA', 'Net-SNMP', 'NetCDF', 'Newsletr', 'NGPL', 'NLOD-1.0', 'NLPL', 'Nokia', 'NOSL', 'Noweb', 'NPL-1.0', 'NPL-1.1', 'NPOSL-3.0', 'NRL', 'NTP', 'OCCT-PL', 'OCLC-2.0', 'ODbL-1.0', 'ODC-By-1.0', 'OFL-1.0', 'OFL-1.1', 'OGL-Canada-2.0', 'OGL-UK-1.0', 'OGL-UK-2.0', 'OGL-UK-3.0', 'OGTSL', 'OLDAP-1.1', 'OLDAP-1.2', 'OLDAP-1.3', 'OLDAP-1.4', 'OLDAP-2.0', 'OLDAP-2.0.1', 'OLDAP-2.1', 'OLDAP-2.2', 'OLDAP-2.2.1', 'OLDAP-2.2.2', 'OLDAP-2.3', 'OLDAP-2.4', 'OLDAP-2.5', 'OLDAP-2.6', 'OLDAP-2.7', 'OLDAP-2.8', 'OML', 'OpenSSL', 'OPL-1.0', 'OSET-PL-2.1', 'OSL-1.0', 'OSL-1.1', 'OSL-2.0', 'OSL-2.1', 'OSL-3.0', 'Parity-6.0.0', 'PDDL-1.0', 'PHP-3.0', 'PHP-3.01', 'Plexus', 'PostgreSQL', 'psfrag', 'psutils', 'Python-2.0', 'Qhull', 'QPL-1.0', 'Rdisc', 'RHeCos-1.1', 'RPL-1.1', 'RPL-1.5', 'RPSL-1.0', 'RSA-MD', 'RSCPL', 'Ruby', 'SAX-PD', 'Saxpath', 'SCEA', 'Sendmail', 'Sendmail-8.23', 'SGI-B-1.0', 'SGI-B-1.1', 'SGI-B-2.0', 'SHL-0.5', 'SHL-0.51', 'SimPL-2.0', 'SISSL', 'SISSL-1.2', 'Sleepycat', 'SMLNJ', 'SMPPL', 'SNIA', 'Spencer-86', 'Spencer-94', 'Spencer-99', 'SPL-1.0', 'SSH-OpenSSH', 'SSH-short', 'SSPL-1.0', 'SugarCRM-1.1.3', 'SWL', 'TAPR-OHL-1.0', 'TCL', 'TCP-wrappers', 'TMate', 'TORQUE-1.1', 'TOSL', 'TU-Berlin-1.0', 'TU-Berlin-2.0', 'UCL-1.0', 'Unicode-DFS-2015', 'Unicode-DFS-2016', 'Unicode-TOU', 'Unlicense', 'UPL-1.0', 'Vim', 'VOSTROM', 'VSL-1.0', 'W3C', 'W3C-19980720', 'W3C-20150513', 'Watcom-1.0', 'Wsuipa', 'WTFPL', 'X11', 'Xerox', 'XFree86-1.1', 'xinetd', 'Xnet', 'xpp', 'XSkat', 'YPL-1.0', 'YPL-1.1', 'Zed', 'Zend-2.0', 'Zimbra-1.3', 'Zimbra-1.4', 'Zlib', 'zlib-acknowledgement', 'ZPL-1.1', 'ZPL-2.0', 'ZPL-2.1'];
 const licencesLowerCase = ['', '0bsd', 'aal', 'abstyles', 'adobe-2006', 'adobe-glyph', 'adsl', 'afl-1.1', 'afl-1.2', 'afl-2.0', 'afl-2.1', 'afl-3.0', 'afmparse', 'agpl-1.0-only', 'agpl-1.0-or-later', 'agpl-3.0-only', 'agpl-3.0-or-later', 'aladdin', 'amdplpa', 'aml', 'ampas', 'antlr-pd', 'apache-1.0', 'apache-1.1', 'apache-2.0', 'apafml', 'apl-1.0', 'apsl-1.0', 'apsl-1.1', 'apsl-1.2', 'apsl-2.0', 'artistic-1.0', 'artistic-1.0-cl8', 'artistic-1.0-perl', 'artistic-2.0', 'bahyph', 'barr', 'beerware', 'bittorrent-1.0', 'bittorrent-1.1', 'blessing', 'blueoak-1.0.0', 'borceux', 'bsd-1-clause', 'bsd-2-clause', 'bsd-2-clause-freebsd', 'bsd-2-clause-netbsd', 'bsd-2-clause-patent', 'bsd-3-clause', 'bsd-3-clause-attribution', 'bsd-3-clause-clear', 'bsd-3-clause-lbnl', 'bsd-3-clause-no-nuclear-license', 'bsd-3-clause-no-nuclear-license-2014', 'bsd-3-clause-no-nuclear-warranty', 'bsd-3-clause-open-mpi', 'bsd-4-clause', 'bsd-4-clause-uc', 'bsd-protection', 'bsd-source-code', 'bsl-1.0', 'bzip2-1.0.5', 'bzip2-1.0.6', 'caldera', 'catosl-1.1', 'cc-by-1.0', 'cc-by-2.0', 'cc-by-2.5', 'cc-by-3.0', 'cc-by-4.0', 'cc-by-nc-1.0', 'cc-by-nc-2.0', 'cc-by-nc-2.5', 'cc-by-nc-3.0', 'cc-by-nc-4.0', 'cc-by-nc-nd-1.0', 'cc-by-nc-nd-2.0', 'cc-by-nc-nd-2.5', 'cc-by-nc-nd-3.0', 'cc-by-nc-nd-4.0', 'cc-by-nc-sa-1.0', 'cc-by-nc-sa-2.0', 'cc-by-nc-sa-2.5', 'cc-by-nc-sa-3.0', 'cc-by-nc-sa-4.0', 'cc-by-nd-1.0', 'cc-by-nd-2.0', 'cc-by-nd-2.5', 'cc-by-nd-3.0', 'cc-by-nd-4.0', 'cc-by-sa-1.0', 'cc-by-sa-2.0', 'cc-by-sa-2.5', 'cc-by-sa-3.0', 'cc-by-sa-4.0', 'cc-pddc', 'cc0-1.0', 'cddl-1.0', 'cddl-1.1', 'cdla-permissive-1.0', 'cdla-sharing-1.0', 'cecill-1.0', 'cecill-1.1', 'cecill-2.0', 'cecill-2.1', 'cecill-b', 'cecill-c', 'cern-ohl-1.1', 'cern-ohl-1.2', 'clartistic', 'cnri-jython', 'cnri-python', 'cnri-python-gpl-compatible', 'condor-1.1', 'copyleft-next-0.3.0', 'copyleft-next-0.3.1', 'cpal-1.0', 'cpl-1.0', 'cpol-1.02', 'crossword', 'crystalstacker', 'cua-opl-1.0', 'cube', 'curl', 'd-fsl-1.0', 'diffmark', 'doc', 'dotseqn', 'dsdp', 'dvipdfm', 'ecl-1.0', 'ecl-2.0', 'efl-1.0', 'efl-2.0', 'egenix', 'entessa', 'epl-1.0', 'epl-2.0', 'erlpl-1.1', 'etalab-2.0', 'eudatagrid', 'eupl-1.0', 'eupl-1.1', 'eupl-1.2', 'eurosym', 'fair', 'frameworx-1.0', 'freeimage', 'fsfap', 'fsful', 'fsfullr', 'ftl', 'gfdl-1.1-only', 'gfdl-1.1-or-later', 'gfdl-1.2-only', 'gfdl-1.2-or-later', 'gfdl-1.3-only', 'gfdl-1.3-or-later', 'giftware', 'gl2ps', 'glide', 'glulxe', 'gnuplot', 'gpl-1.0-only', 'gpl-1.0-or-later', 'gpl-2.0-only', 'gpl-2.0-or-later', 'gpl-3.0-only', 'gpl-3.0-or-later', 'gsoap-1.3b', 'haskellreport', 'hpnd', 'hpnd-sell-variant', 'ibm-pibs', 'icu', 'ijg', 'imagemagick', 'imatix', 'imlib2', 'info-zip', 'intel', 'intel-acpi', 'interbase-1.0', 'ipa', 'ipl-1.0', 'isc', 'jasper-2.0', 'jpnic', 'json', 'lal-1.2', 'lal-1.3', 'latex2e', 'leptonica', 'lgpl-2.0-only', 'lgpl-2.0-or-later', 'lgpl-2.1-only', 'lgpl-2.1-or-later', 'lgpl-3.0-only', 'lgpl-3.0-or-later', 'lgpllr', 'libpng', 'libpng-2.0', 'libtiff', 'liliq-p-1.1', 'liliq-r-1.1', 'liliq-rplus-1.1', 'linux-openib', 'lpl-1.0', 'lpl-1.02', 'lppl-1.0', 'lppl-1.1', 'lppl-1.2', 'lppl-1.3a', 'lppl-1.3c', 'makeindex', 'miros', 'mit', 'mit-0', 'mit-advertising', 'mit-cmu', 'mit-enna', 'mit-feh', 'mitnfa', 'motosoto', 'mpich2', 'mpl-1.0', 'mpl-1.1', 'mpl-2.0', 'mpl-2.0-no-copyleft-exception', 'ms-pl', 'ms-rl', 'mtll', 'mulanpsl-1.0', 'multics', 'mup', 'nasa-1.3', 'naumen', 'nbpl-1.0', 'ncsa', 'net-snmp', 'netcdf', 'newsletr', 'ngpl', 'nlod-1.0', 'nlpl', 'nokia', 'nosl', 'noweb', 'npl-1.0', 'npl-1.1', 'nposl-3.0', 'nrl', 'ntp', 'occt-pl', 'oclc-2.0', 'odbl-1.0', 'odc-by-1.0', 'ofl-1.0', 'ofl-1.1', 'ogl-canada-2.0', 'ogl-uk-1.0', 'ogl-uk-2.0', 'ogl-uk-3.0', 'ogtsl', 'oldap-1.1', 'oldap-1.2', 'oldap-1.3', 'oldap-1.4', 'oldap-2.0', 'oldap-2.0.1', 'oldap-2.1', 'oldap-2.2', 'oldap-2.2.1', 'oldap-2.2.2', 'oldap-2.3', 'oldap-2.4', 'oldap-2.5', 'oldap-2.6', 'oldap-2.7', 'oldap-2.8', 'oml', 'openssl', 'opl-1.0', 'oset-pl-2.1', 'osl-1.0', 'osl-1.1', 'osl-2.0', 'osl-2.1', 'osl-3.0', 'parity-6.0.0', 'pddl-1.0', 'php-3.0', 'php-3.01', 'plexus', 'postgresql', 'psfrag', 'psutils', 'python-2.0', 'qhull', 'qpl-1.0', 'rdisc', 'rhecos-1.1', 'rpl-1.1', 'rpl-1.5', 'rpsl-1.0', 'rsa-md', 'rscpl', 'ruby', 'sax-pd', 'saxpath', 'scea', 'sendmail', 'sendmail-8.23', 'sgi-b-1.0', 'sgi-b-1.1', 'sgi-b-2.0', 'shl-0.5', 'shl-0.51', 'simpl-2.0', 'sissl', 'sissl-1.2', 'sleepycat', 'smlnj', 'smppl', 'snia', 'spencer-86', 'spencer-94', 'spencer-99', 'spl-1.0', 'ssh-openssh', 'ssh-short', 'sspl-1.0', 'sugarcrm-1.1.3', 'swl', 'tapr-ohl-1.0', 'tcl', 'tcp-wrappers', 'tmate', 'torque-1.1', 'tosl', 'tu-berlin-1.0', 'tu-berlin-2.0', 'ucl-1.0', 'unicode-dfs-2015', 'unicode-dfs-2016', 'unicode-tou', 'unlicense', 'upl-1.0', 'vim', 'vostrom', 'vsl-1.0', 'w3c', 'w3c-19980720', 'w3c-20150513', 'watcom-1.0', 'wsuipa', 'wtfpl', 'x11', 'xerox', 'xfree86-1.1', 'xinetd', 'xnet', 'xpp', 'xskat', 'ypl-1.0', 'ypl-1.1', 'zed', 'zend-2.0', 'zimbra-1.3', 'zimbra-1.4', 'zlib', 'zlib-acknowledgement', 'zpl-1.1', 'zpl-2.0', 'zpl-2.1'];
-const defaultIgnores = ['bjspm/packages/**', '.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
+const defaultIgnores = ['bjspm/packages/**', 'node_modules/**', '.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
 const panickMsg = 'Something went wrong!';
 const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
 const checksumHashFunction = 'sha256';
@@ -94,28 +96,27 @@ let cmdConfig = getArgsConfig(cmdArgs);
 let cmdBaseArgs = cmdConfig[baseArgs];
 let conf = null;
 
-function getEmptyPackage() {
+function getDefaultPackage() {
 	return {
 		name: '',
 		version: '',
 		sid: '',
 		description: '',
-		keywords: null,
+		keywords: [],
 		license: '',
 		username: '',
 		dependencies: []
 	};
 }
 
-function getDefaultPackage() {
-	let name = path.basename(cwdPath).toLowerCase();
+function getSuggestPackage() {
 	return {
-		name: isValidPackageName(name) ? name : '',
+		name: '',
 		version: '1.0.0',
 		sid: '',
 		description: '',
 		keywords: [],
-		license: '',
+		license: 'MIT',
 		username: '',
 		dependencies: []
 	};
@@ -160,7 +161,6 @@ loadAppConfig(() => {
 						let uploadType = 'unnamed';
 						let access = 'public';
 						let tags = [];
-						let force = false;
 
 						if (cmdBaseArgs.length === 1) {
 							if (!isValidPackage()) {
@@ -229,6 +229,8 @@ loadAppConfig(() => {
 								let fileData = result.fileData;
 								let cleanupCallback = result.cleanupCallback;
 
+								log(zipPath);
+
 								let stats = fs.statSync(zipPath);
 								if (stats.size > serverConfig.maxPackageSize) {
 									log(`Package archive size exceeds maximum of ${filesize(serverConfig.maxPackageSize)}`);
@@ -242,8 +244,10 @@ loadAppConfig(() => {
 
 									switch (obj.status) {
 										case API_STATUS.OK:
-											package.sid = obj.packageId;
-											storePackage();
+											if(cmdBaseArgs.length === 1){
+												package.sid = obj.packageId;
+												storePackage();
+											}
 											die('Package published, id: ' + obj.packageId);
 										case API_STATUS.ERR:
 											die('Server error: ' + obj.error);
@@ -497,6 +501,7 @@ loadAppConfig(() => {
 								let letter = installedIds.length > 1 ? 's' : '';
 
 								if (installedIds.length !== 0) {
+									addPackageBaseModules(true);
 									if (uninstallable !== 0) {
 										log(`Package${letter} partially ${word}, ${uninstallable} packages could not be ${word}`);
 									} else {
@@ -1186,7 +1191,7 @@ loadAppConfig(() => {
 										die('Invalid username');
 									}
 									getPackageAccessListUser(user, (obj) => {
-										let json = JSON.stringify(obj, undefined, 2);
+										let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
 										die(json);
 									});
 								}
@@ -1213,13 +1218,13 @@ loadAppConfig(() => {
 									checkPackageAvailability(packageId, (availability) => {
 										if (availability === 'public') {
 											getPackageCollaborators(packageId, user, (obj) => {
-												let json = JSON.stringify(obj, undefined, 2);
+												let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
 												die(json);
 											});
 										} else {
 											let listCollaborators = (authToken) => {
 												getPackageCollaborators(packageId, user, (obj) => {
-													let json = JSON.stringify(obj, undefined, 2);
+													let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
 													die(json);
 												}, authToken);
 											};
@@ -1449,14 +1454,14 @@ loadAppConfig(() => {
 								case 'dir': {
 									let dir = cmdBaseArgs[2];
 									if (dir !== undefined) {
+										if(dir === 'default'){
+											dir = getDefaultAppConfig().packageCachePath;
+										}
 										if (!path.isAbsolute(dir)) {
 											die('Only absolute paths are allowed');
 										}
-										if (fs.existsSync(dir)) {
-											let stat = fs.statSync(dir);
-											if (!stat.isDirectory()) {
-												die('Path resolves to a file, must be a directory');
-											}
+										if (existsAsFile(dir)) {
+											die('Path resolves to a file, must be a directory');
 										}
 										appConfig.packageCachePath = dir;
 										storeAppConfig();
@@ -2002,7 +2007,7 @@ function getAuthTokenWithPackagePermissions(packageId, permissions, callback) {
 		}
 		getUserPackagePermissions(packageId, token, (permissionsObj) => {
 			for (let permission of permissions) {
-				if (!(permission in permissionsObj)) {
+				if (!permissionsObj[permission]) {
 					iterate();
 					return;
 				}
@@ -2058,7 +2063,7 @@ function getPackageDownloadUrls(packageId, callback, authToken, patch) {
 }
 
 function getPackageChecksums(packageId, callback, authToken, patch) {
-	let cachekey = packageId + patch === undefined ? '' : patch;
+	let cachekey = packageId + (patch === undefined ? '' : patch);
 	if (packageChecksumsCache[cachekey] !== undefined) {
 		callback(packageChecksumsCache[cachekey]);
 		return;
@@ -2175,7 +2180,7 @@ function getMajorInstallId(installId) {
 	}
 }
 
-function getInstallDirFromInstallId(installId) {
+function getInstallDirFromInstallId(installId, baseDir = packagesPath) {
 	if (!isValidSemiSpecificPackageId(installId)) {
 		return null;
 	}
@@ -2185,14 +2190,14 @@ function getInstallDirFromInstallId(installId) {
 		let packageName = matches[2];
 		let packageVersion = regexMajorVersion.test(matches[3]) ? matches[3] : semverMajor(matches[3]);
 
-		return path.resolve(packagesPath, `${user}`, `${packageName}${packageVersion}`);
+		return path.resolve(baseDir, `${user}`, `${packageName}${packageVersion}`);
 	} else {
-		return path.resolve(packagesPath, installId);
+		return path.resolve(baseDir, installId);
 	}
 }
 
-function getPackageFromInstallId(installId, callback) {
-	let packageDir = getInstallDirFromInstallId(installId);
+function getPackageFromInstallId(installId, callback, baseDir) {
+	let packageDir = getInstallDirFromInstallId(installId, baseDir);
 	if (packageDir === null) {
 		return null;
 	}
@@ -2357,7 +2362,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						} else {
 							proceed();
 						}
-					});
+					}, folder ? folder : undefined);
 				}, authToken);
 			}, authToken);
 		} else {
@@ -2510,23 +2515,20 @@ function isPackageInCache(packageId) {
 	return fs.existsSync(zipPath);
 }
 
-function downloadPackage(packageId, dlType, targetPath, callback, authToken, urlIndex = 0) {
+function downloadPackage(packageId, dlType, targetPath, callback, authToken, urlIndex = 0, patchFrom = undefined) {
 	mkdirSync(appConfig.packageCachePath);
 
 	let packageType = getPackageTypeFromSid(packageId);
-	let patchFrom;
 	let patchFiles;
 	let patch;
 	let patchSID = undefined;
-	let currentPackage;
+	let basePath = path.resolve(targetPath, packageType === 'user' ? '../../' : '../');
 
-	if (packageType === 'user') {
-		currentPackage = getPackageFromInstallId(packageId);
-		let targetVersion = packageId.split('@')[1];
-		if (currentPackage !== null) {
-			if (currentPackage.version !== targetVersion) {
-				patchFrom = currentPackage.sid;
-			}
+	if(patchFrom === undefined){
+		let currentPackage = getPackageFromInstallId(packageId, undefined, basePath);
+		
+		if(currentPackage !== null){
+			patchFrom = currentPackage.sid;
 		}
 	}
 
@@ -2543,6 +2545,13 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 			}
 		};
 		getPackageChecksums(packageId, (checksums) => {
+			let onInstalled = () => {
+				cls();
+				if(patchSID === undefined){
+					onPackageInstalled(packageId, basePath);
+				}
+				callback(targetPath);
+			};
 			let onDownloaded = (checkIntegrity) => {
 				let onIntegrityCheckOK = () => {
 					mkdirSync(targetPath);
@@ -2634,20 +2643,17 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 										}
 									}
 									deleteDirectory(extractDir, () => {
-										cls();
-										callback(targetPath);
+										onInstalled();
 									});
 								});
 							});
 						} else {
 							if (patchSID !== undefined) {
 								downloadPackage(patchSID, dlType, targetPath, () => {
-									cls();
-									callback(targetPath);
-								}, authToken);
+									onInstalled();
+								}, authToken, 0, urlArray.base);
 							} else {
-								cls();
-								callback(targetPath);
+								onInstalled();
 							}
 						}
 					}, (err) => {
@@ -2682,7 +2688,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 					log(`Package "${urlArray.base}" found in cache`);
 					log(`Verifying package integrity`);
 				} else {
-					log(`Package patch "${currentPackage.sid}" -> "${packageId}" found in cache`);
+					log(`Package patch "${patchFrom}" -> "${packageId}" found in cache`);
 					log(`Verifying package patch integrity`);
 				}
 				getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
@@ -2690,7 +2696,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 						log(`Integrity check failed, deleting file`);
 						fs.unlinkSync(zipPath);
 						log(`Downloading package`);
-						downloadPackage(packageId, dlType, targetPath, callback, urlIndex);
+						downloadPackage(packageId, dlType, targetPath, callback, urlIndex, shouldPatch);
 					} else {
 						if (patchFrom === undefined) {
 							onDownloaded(false);
@@ -2759,7 +2765,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 					}
 					if (urlIndex === 0) {
 						if (patchFrom !== undefined) {
-							log(`Downloading package patch "${currentPackage.sid}" -> "${packageId}"`);
+							log(`Downloading package patch "${patchFrom}" -> "${packageId}"`);
 						} else {
 							log(`Downloading package "${urlArray.base}"`);
 						}
@@ -2792,7 +2798,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 						if (err) {
 							if (!fs.existsSync(zipPath)) {
 								if (urls.length > urlIndex + 1) {
-									downloadPackage(packageId, dlType, targetPath, callback, urlIndex + 1);
+									downloadPackage(packageId, dlType, targetPath, callback, urlIndex + 1, shouldPatch);
 								} else {
 									log(panickMsg);
 									console.trace();
@@ -2910,6 +2916,9 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 						}
 						uploadIndex++;
 					}
+				}
+				if(progress.percent === 1 && toLog){
+					log('Upload complete, waiting for server...');
 				}
 			});
 			try {
@@ -3336,9 +3345,10 @@ function zipPackage(callback, logZipping) {
 				accumulatedSize += file.size;
 				file.atSizePercentage = accumulatedSize / totalSize;
 			}
-			archive.finalize().then(() => {
+			output.on('close', () => {
 				callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
 			});
+			archive.finalize();
 		});
 	});
 }
@@ -3481,6 +3491,9 @@ function getLoginAuthToken() {
 }
 
 function getPackageType() {
+	if(package.sid.length !== 0){
+		return getPackageTypeFromSid(package.sid);
+	}
 	if (package.name.length !== 0 && package.version.length !== 0 && package.username.length !== 0) { // user package
 		return 'user';
 	} else if (package.name.length !== 0) { // named standalone package
@@ -3678,6 +3691,45 @@ function storePackageConfig() {
 	fs.writeFileSync(packageConfigPath, json, 'utf8');
 }
 
+function addPackageBaseModules(checkExists = false){
+	let packageBaseModuleString = getPackageBaseModuleString('/');
+
+	if(checkExists){
+		if(!fs.existsSync(packageBaseModuleJSPath)){
+			fs.writeFileSync(packageBaseModuleJSPath, packageBaseModuleString, 'utf8');
+		}
+		if(!fs.existsSync(packageBaseModuleTSPath)){
+			fs.writeFileSync(packageBaseModuleTSPath, packageBaseModuleString, 'utf8');
+		}
+	} else {
+		fs.writeFileSync(packageBaseModuleJSPath, packageBaseModuleString, 'utf8');
+		fs.writeFileSync(packageBaseModuleTSPath, packageBaseModuleString, 'utf8');
+	}
+}
+
+function onPackageInstalled(packageId, dir){
+	let rDir = path.resolve(dir);
+	let isLocalPackage = rDir === path.resolve(packagesPath);
+
+	if(isLocalPackage){
+		let localDir = getInstallDirFromInstallId(packageId).substr(rDir.length + 1) + '/';
+		let indexJS = path.resolve(dir, `${ localDir }bjspm/index.js`);
+		let indexTS = path.resolve(dir, `${ localDir }bjspm/index.ts`);
+		let moduleStr = getPackageBaseModuleString('/bjspm/' + localDir).replace(/\\/g, '/');
+
+		if(existsAsFile(indexJS)){
+			fs.writeFileSync(indexJS, moduleStr, 'utf8');
+		}
+		if(existsAsFile(indexTS)){
+			fs.writeFileSync(indexTS, moduleStr, 'utf8');
+		}
+	}
+}
+
+function getPackageBaseModuleString(dir){
+	return `export const PACKAGE_BASE = '${ dir }';`;
+}
+
 function randomBase36(length) {
 	return new Array(length).fill(0).map(() => ((Math.random() * 36) | 0).toString(36)).join('');
 }
@@ -3720,7 +3772,8 @@ This utility will walk you through creating a package.json file.
 Press ^C at any time to quit.
 `);
 
-	let newPackage = getEmptyPackage();
+	let suggestPackage = getSuggestPackage();
+	let newPackage = getDefaultPackage();
 	newPackage.dependencies = package.dependencies;
 
 	let writePackage = (obj) => {
@@ -3734,6 +3787,7 @@ Press ^C at any time to quit.
 			if (['', 'y', 'yes'].indexOf(_answer) !== -1) {
 				mkdirSync(bjspmPath);
 				fs.writeFileSync(packageJsonPath, json, 'utf8');
+				addPackageBaseModules();
 				process.exit();
 			} else {
 				die('Aborted.\n');
@@ -3741,17 +3795,21 @@ Press ^C at any time to quit.
 		});
 	};
 
+	let keywordsSet = false;
 	let descriptionSet = false;
 	let licenseSet = false;
 	let usernameSet = false;
 	let packageNameSet = false;
+
 	let askQuestion = () => {
+		// Package name
 		if (!packageNameSet) {
-			let hasDefault = package.name.length !== 0 && isValidPackageName(package.name);
-			readline.question(`package name: ${hasDefault ? `(${package.name}) ` : ''}`, (name) => {
-				name = name.toLowerCase();
+			let defaultName = package.name || suggestPackage.name;
+			let hasDefault = defaultName.length !== 0 && isValidPackageName(defaultName);
+
+			readline.question(`package name: ${hasDefault ? `(${defaultName}) ` : ''}`, (name) => {
 				if (hasDefault && name.length === 0) {
-					newPackage.name = package.name;
+					newPackage.name = defaultName;
 					packageNameSet = true;
 					log();
 				} else {
@@ -3766,11 +3824,15 @@ Press ^C at any time to quit.
 				askQuestion();
 			});
 		}
+
+		// Package version
 		if (newPackage.version.length === 0) {
-			let hasDefault = package.version.length !== 0 && isValidPackageVersion(package.version);
-			readline.question(`version: ${hasDefault ? `(${package.version}) ` : ''}`, (version) => {
+			let defaultVersion = package.version || suggestPackage.version;
+			let hasDefault = defaultVersion.length !== 0 && isValidPackageVersion(defaultVersion);
+
+			readline.question(`version: ${hasDefault ? `(${defaultVersion}) ` : ''}`, (version) => {
 				if (hasDefault && version.length === 0) {
-					newPackage.version = package.version;
+					newPackage.version = defaultVersion;
 					log();
 				} else {
 					if (isValidPackageVersion(version)) {
@@ -3783,11 +3845,15 @@ Press ^C at any time to quit.
 				askQuestion();
 			});
 		}
+
+		// Package description
 		if (!descriptionSet) {
-			let hasDefault = package.description.length !== 0 && isValidPackageDescription(package.description);
-			readline.question(`description: ${hasDefault ? `(${package.description}) ` : ''}`, (description) => {
+			let defaultDescription = package.description || suggestPackage.description;
+			let hasDefault = defaultDescription.length !== 0 && isValidPackageDescription(defaultDescription);
+
+			readline.question(`description: ${hasDefault ? `(${defaultDescription}) ` : ''}`, (description) => {
 				if (hasDefault && description.length === 0) {
-					newPackage.description = package.description;
+					newPackage.description = defaultDescription;
 					descriptionSet = true;
 				} else {
 					if (isValidPackageDescription(description)) {
@@ -3801,22 +3867,31 @@ Press ^C at any time to quit.
 				askQuestion();
 			});
 		}
-		if (newPackage.keywords === null) {
-			let hasDefault = package.keywords.length !== 0 && isValidPackageKeywords(package.keywords);
-			readline.question(`keywords: ${hasDefault ? `(${package.keywords.join(', ')}) ` : ''}`, (keywords) => {
+
+		// Package keywords
+		if (!keywordsSet) {
+			let defaultKeywords = package.keywords.length === 0 ? suggestPackage.keywords : package.keywords;
+			let hasDefault = defaultKeywords.length !== 0 && isValidPackageKeywords(defaultKeywords);
+
+			readline.question(`keywords: ${hasDefault ? `(${defaultKeywords.join(', ')}) ` : ''}`, (keywords) => {
 				if (hasDefault && keywords.length === 0) {
-					newPackage.keywords = package.keywords;
+					newPackage.keywords = defaultKeywords;
 				} else {
 					newPackage.keywords = keywords.replace(/\,/g, ' ').replace(/  /g, ' ').split(' ').filter(keyword => keyword.length !== 0);
 				}
+				keywordsSet = true;
 				log();
 				askQuestion();
 			});
 		}
+
+		// Package license
 		if (!licenseSet) {
-			let validLicense = getValidLicense(package.license);
-			let hasDefault = package.license.length !== 0 && validLicense !== null;
-			readline.question(`license: ${hasDefault ? `(${package.license}) ` : ''}`, (license) => {
+			let defaultLicense = package.license || suggestPackage.license;
+			let validLicense = getValidLicense(defaultLicense);
+			let hasDefault = defaultLicense.length !== 0 && validLicense !== null;
+
+			readline.question(`license: ${hasDefault ? `(${validLicense}) ` : ''}`, (license) => {
 				if (hasDefault && license.length === 0) {
 					newPackage.license = validLicense;
 					licenseSet = true;
@@ -3833,11 +3908,15 @@ Press ^C at any time to quit.
 				askQuestion();
 			});
 		}
+
+		// Package username
 		if (!usernameSet) {
-			let hasDefault = package.username.length !== 0 && isValidUsername(package.username);
-			readline.question(`your croncle.com username: ${hasDefault ? `(${package.username}) ` : ''}`, (username) => {
+			let defaultUsername = package.username || suggestPackage.username;
+			let hasDefault = defaultUsername.length !== 0 && isValidUsername(defaultUsername);
+
+			readline.question(`your croncle.com username: ${hasDefault ? `(${defaultUsername}) ` : ''}`, (username) => {
 				if (hasDefault && username.length === 0) {
-					newPackage.username = package.username;
+					newPackage.username = defaultUsername;
 					usernameSet = true;
 				} else {
 					if (isValidUsername(username) || username.length === 0) {
@@ -3848,7 +3927,6 @@ Press ^C at any time to quit.
 					}
 				}
 				writePackage(newPackage);
-				package = newPackage;
 			});
 		}
 	}
@@ -3962,7 +4040,7 @@ bjspm access ls-collaborators [<package> [<user>]]`);
 bjspm cache (with no args, shows info)
 bjspm cache clear
 bjspm cache max-size [<mib> | none]
-bjspm cache dir [<new-dir-path>]`);
+bjspm cache dir [<new-dir-path>|default]`);
 		}
 			break;
 		case 'ls': {
@@ -3980,6 +4058,7 @@ bjspm auth store [<user>]
 bjspm auth forget [<user>]
 bjspm auth login [<user>]
 bjspm auth logout
+bjspm auth ls
 
 options: --json, --depth`);
 		}
