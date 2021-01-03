@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const version = '1.1.0';
-const CRONCLE_BJSPM = 'dev-bjspm.croncle.com';
 const fs = require('fs');
 const crypto = require('crypto');
 const archiver = require('archiver');
@@ -40,7 +39,6 @@ const path = require('path');
 const cwdPath = process.cwd() + path.sep;
 const bjspmPath = process.cwd() + path.sep + 'bjspm' + path.sep;
 const packagesPath = bjspmPath + 'packages' + path.sep;
-const webPackagesPath = `https://${CRONCLE_BJSPM}/packages/`;
 const packageJsonPath = bjspmPath + 'package.json';
 const packageConfigPath = bjspmPath + 'config.json';
 const packageBaseModuleJSPath = bjspmPath + 'index.js';
@@ -73,8 +71,6 @@ const panickMsg = 'Something went wrong!';
 const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
 const checksumHashFunction = 'sha256';
 const baseArgs = Symbol('cmdConfigBaseArgs');
-const logZipping = false;
-const logUploadThreshold = 1024 * 1024 * 10;
 
 let ignores = defaultIgnores;
 let ignoreGlobs = [];
@@ -91,8 +87,8 @@ for (let ignoreGlob of defaultIgnores) {
 mkdirSync(appDataPath);
 
 let authTokens = {};
-let cmdArgs = explodeArgs(process.argv.slice(2));
-let cmdConfig = getArgsConfig(cmdArgs);
+let cmdArgs = process.argv.slice(2);
+let cmdConfig = getArgsConfig(cmdArgs, ['sub']);
 let cmdBaseArgs = cmdConfig[baseArgs];
 let conf = null;
 
@@ -128,7 +124,10 @@ function getDefaultAppConfig() {
 	return {
 		username: null,
 		packageCachePath: appDataPath + path.sep + 'packages' + path.sep,
-		maxCacheSize: null
+		maxCacheSize: null,
+		logZipping: false,
+		logUploadThreshold: 1024 * 1024 * 10,
+		registry: 'dev-bjspm.croncle.com'
 	};
 }
 
@@ -142,14 +141,20 @@ let appConfig = getDefaultAppConfig();
 let package = getDefaultPackage();
 let packageConfig = getDefaultPackageConfig();
 
+function getWebPackagesPath(){
+	return `https://${appConfig.registry}/packages/`;
+}
+
 loadAppConfig(() => {
 	loadPackage(() => {
 		loadAuthTokens(() => {
 			cleanAppConfig();
 			if (cmdArgs.length === 0) {
 				showQuickHelp();
-			} else if (cmdArgs.length === 2 && cmdArgs[1] === '-h') {
+			} else if (cmdArgs.length === 2 && cmdConfig['usage']) {
 				showCommandHelp(cmdArgs[0]);
+			} else if (cmdArgs.length === 1 && cmdConfig['version']) {
+				die(version);
 			} else {
 				switch (cmdBaseArgs[0]) {
 					case 'create':
@@ -158,7 +163,6 @@ loadAppConfig(() => {
 						initPackage();
 					}
 						break;
-					case 'p':
 					case 'publish': {
 						let uploadType = 'unnamed';
 						let access = 'public';
@@ -204,25 +208,39 @@ loadAppConfig(() => {
 									}
 								}
 							}
+						} else {
+							if (conf = cmdConfig['type']) {
+								let arg = conf[0];
+
+								if (arg !== undefined) {
+									if (arg.toLowerCase() !== 'unnamed') {
+										die(`Only type unnamed is allowed when specifying files`);
+									}
+								}
+							}
 						}
 						if (conf = cmdConfig['access']) {
 							let arg = conf[0];
 							if (arg !== undefined) {
+								if (package.sid.length !== 0 && uploadType === 'user') {
+									let bsid = getPackageBsid();
+
+									if (bsid === package.username + '/' + package.name) {
+										die(`\nAccess levels cannot be set on individual packages. You may use the access command to change the access level for package tree "${bsid}"\n`);
+									}
+								}
 								switch (arg.toLowerCase()) {
 									case 'public':
 										access = 'public';
 										break;
 									case 'restricted':
-										access = 'restricted'
+										access = 'restricted';
 										break;
 									default:
 										die('Invalid access level');
 										break;
 								}
 							}
-						}
-						if (conf = cmdConfig['force']) {
-							force = getConfigBool(conf[0]);
 						}
 						getServerConfig(serverConfig => {
 							if (serverConfig.uploadDisabled) {
@@ -259,7 +277,9 @@ loadAppConfig(() => {
 								if (uploadType === 'user') {
 									getAuthTokenWithPackagePermissions(getUserPackageBsid(), ['mayPublish'], (token) => {
 										if (token === null) {
-											if (package.sid.length === 0 && authTokens[package.username] !== undefined) {
+											let packageType = getPackageType();
+
+											if ((package.sid.length === 0 || packageType !== 'user') && authTokens[package.username] !== undefined) { // Assume first upload as user package & valid token
 												uploadPackage(zipPath, fileData, authTokens[package.username], uploadType, access, tags, uploadCallback, undefined, packagePatch);
 											} else {
 												let promptUsername = undefined;
@@ -278,7 +298,7 @@ loadAppConfig(() => {
 										} else {
 											uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 										}
-									});
+									}, true);
 								} else if (serverConfig.loginRequired) {
 									let loginAuthToken = getLoginAuthToken();
 									if (loginAuthToken !== null) {
@@ -296,7 +316,7 @@ loadAppConfig(() => {
 									uploadPackage(zipPath, fileData, loginAuthToken, uploadType, access, tags, uploadCallback, undefined, packagePatch);
 								}
 							};
-							let _logZipping = logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
+							let _logZipping = appConfig.logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
 							if (cmdBaseArgs.length === 1) {
 								loadJsonFile(filePathsPath, (prevFilePaths) => {
 									loadIgnores(() => {
@@ -309,7 +329,7 @@ loadAppConfig(() => {
 												if (package.sid.length !== 0) {
 													let makePatch = () => {
 														increasePackageVersionIfSame();
-														log(`Making package patch...`);
+														log(`Making package patch${_logZipping ? '' : '...'}`);
 														let newFilePaths = [];
 														let filePathGroups = [];
 														let refFilePaths = [];
@@ -357,12 +377,12 @@ loadAppConfig(() => {
 																		}
 																	});
 																} else {
-																	log(`Making package archive...`);
+																	log(`Making package archive${_logZipping ? '' : '...'}`);
 																	zipPackage(onZipped, _logZipping);
 																}
 															} else {
 																increasePackageVersionIfSame();
-																log(`Making package archive...`);
+																log(`Making package archive${_logZipping ? '' : '...'}`);
 																zipPackage(onZipped, _logZipping);
 															}
 														} else {
@@ -370,11 +390,11 @@ loadAppConfig(() => {
 														}
 													});
 												} else {
-													log(`Making package archive...`);
+													log(`Making package archive${_logZipping ? '' : '...'}`);
 													zipPackage(onZipped, _logZipping);
 												}
 											} else {
-												log(`Making package archive...`);
+												log(`Making package archive${_logZipping ? '' : '...'}`);
 												increasePackageVersionIfSame();
 												zipPackage(onZipped, _logZipping);
 											}
@@ -382,8 +402,11 @@ loadAppConfig(() => {
 									});
 								});
 							} else {
-								log(`Making package archive...`);
-								zipFiles(cmdBaseArgs.slice(1), onZipped, _logZipping);
+								log(`Making package archive${_logZipping ? '' : '...'}`);
+
+								let subFilesOnly = (conf = cmdConfig['sub']) && getConfigBool(conf[0]);
+
+								zipFiles(cmdBaseArgs.slice(1), onZipped, _logZipping, subFilesOnly);
 							}
 						});
 					}
@@ -477,7 +500,9 @@ loadAppConfig(() => {
 						}
 						break;
 					case 'i':
+					case 'isntall':
 					case 'install':
+					case 'add':
 					case 'up':
 					case 'upgrade':
 					case 'udpate':
@@ -490,28 +515,42 @@ loadAppConfig(() => {
 						let update = ['up', 'upgrade', 'udpate', 'update'].indexOf(cmdBaseArgs[0]) !== -1;
 						let checkSIDs = false;
 
+						if (conf = cmdConfig['dir']) {
+							let arg = conf[0];
+							if (arg !== undefined) {
+								folder = arg;
+							} else {
+								showCommandHelp('install');
+							}
+						}
 						if (update) {
+							if(folder !== null){
+								die(`Cannot update in a subdirectory`);
+							}
 							if (cmdBaseArgs.length === 1) {
 								installIds = package.dependencies;
 							} else {
 								for (let i = 1; i < cmdBaseArgs.length; i++) {
+									if (!isValidPackageUpdateId(cmdBaseArgs[i])) {
+										log(`Invalid package identifier for updating: "${cmdBaseArgs[i]}"`);
+										continue;
+									}
+									if (isPackageInstalled(cmdBaseArgs[i], folder ? folder : undefined) === false) {
+										log(`Package not installed: "${cmdBaseArgs[i]}"`);
+										continue;
+									}
 									installIds.push(cmdBaseArgs[i]);
 								}
 								checkSIDs = true;
 
 								for (let dependency of package.dependencies) {
-									if (installIds.indexOf() !== -1) {
+									if (installIds.indexOf(dependency) !== -1) {
 										continue;
 									}
-									if (!fs.existsSync(getInstallDirFromInstallId(dependency))) {
+									if (!isPackageInstalled(dependency, folder ? folder : undefined)) {
 										installIds.push(dependency);
 										log(`Missing dependency "${dependency}" will be installed as well`);
 									}
-								}
-							}
-							for (let installId of installIds) {
-								if (!isValidPackageInstallId(installId)) {
-									die(`Invalid package identifier "${installId}"`);
 								}
 							}
 						} else {
@@ -521,39 +560,32 @@ loadAppConfig(() => {
 								installIds.push(packageId);
 								checkSIDs = true;
 							}
-							if (conf = cmdConfig['dir']) {
-								let arg = conf[0];
-								if (arg !== undefined) {
-									folder = arg;
-								} else {
-									showCommandHelp('install');
-								}
+						}
+						for (let id of installIds) {
+							if (!isValidPackageInstallId(id)) {
+								die(`Invalid package identifier: "${id}"`);
+							}
+							if (update && !isValidPackageUpdateId(id)) {
+								die(`Invalid package identifier for updating: "${id}"`);
 							}
 						}
 						if (installIds.length === 0) {
-							die('Nothing to install');
+							die(`Nothing to ${update ? 'update' : 'install'}`);
 						}
 						if (conf = cmdConfig['force']) {
 							force = getConfigBool(conf[0]);
 						}
 						let save = folder === null;
-						let rejectMsg = `Packages installed in a custom directory will not be added as a dependency`;
 						if (conf = cmdConfig['no-save']) {
-							if (!getConfigBool(conf[0])) {
-								if (folder !== null) {
-									log(rejectMsg);
-								} else {
-									save = true;
-								}
+							if (getConfigBool(conf[0])) {
+								save = false;
 							}
 						} else if (conf = cmdConfig['save']) {
-							if (getConfigBool(conf[0])) {
-								if (folder !== null) {
-									log(rejectMsg);
-								} else {
-									save = true;
-								}
-							}
+							save = getConfigBool(conf[0]);
+						}
+						if (save && folder !== null) {
+							save = false;
+							log(`Packages installed in a custom directory cannot be added as a dependency`);
 						}
 						let i = -1;
 						let installedIds = [];
@@ -566,11 +598,13 @@ loadAppConfig(() => {
 								let letter = installedIds.length > 1 ? 's' : '';
 
 								if (installedIds.length !== 0) {
-									addPackageBaseModules(true);
+									if (folder === null) {
+										addPackageBaseModules(true);
+									}
 									if (uninstallable !== 0) {
-										log(`Package${letter} partially ${word}, ${uninstallable} packages could not be ${word}`);
+										log(`\nPackage${letter} partially ${word}, ${uninstallable} packages could not be ${word}.\n`);
 									} else {
-										log(`Package${letter} ${word}`);
+										log(`\nPackage${letter} ${word}.\n`);
 									}
 									getRawDependencies(package, (currentDependencies) => {
 										let uninstalledDependencies = previousDependencies.filter(d => currentDependencies.indexOf(d) === -1);
@@ -582,7 +616,7 @@ loadAppConfig(() => {
 												process.exit();
 												return;
 											}
-											let dir = getInstallDirFromInstallId(dependency);
+											let dir = getInstallDirFromInstallId(dependency, folder ? folder : undefined);
 
 											if (fs.existsSync(dir)) {
 												deleteDirectory(dir, (err) => {
@@ -609,19 +643,38 @@ loadAppConfig(() => {
 							let packageType = getPackageTypeFromSid(installId);
 
 							let install = () => {
-								installPackage(installId, folder, dlType, (result, err, addedToDependencies, dependency) => {
+								installPackage(installId, folder, dlType, (result, err) => {
 									if (result !== null) {
 										installedIds.push(installId);
 									} else {
-										if (err === 'dir_exists') {
-											if (!update) {
-												log(`Not installing ${installId} — already installed`);
+										if (!update) {
+											switch (err) {
+												case 'dir_exists': {
+													if (save && packageType !== 'user' && package.dependencies.indexOf(installId) === -1) {
+														package.dependencies.push(installId);
+														storePackage();
+
+														log(`Added "${installId}" to dependencies, seems to be installed already`);
+													} else {
+														log(`Not installing "${installId}" — target directory already exists`);
+													}
+												}
+													break;
+												case 'same_version': {
+													let depId = getMajorInstallId(installId);
+
+													if (save && package.dependencies.indexOf(depId) === -1) {
+														package.dependencies.push(depId);
+														storePackage();
+
+														log(`Added "${depId}" to dependencies, is already installed`);
+													} else {
+														log(`Not installing "${installId}" — already installed`);
+													}
+												}
+												default:
+													uninstallable++;
 											}
-											if (addedToDependencies) {
-												log(`Added ${installId} to dependencies`);
-											}
-										} else if (err !== 'no_update') {
-											uninstallable++;
 										}
 										skippedInstalls++;
 									}
@@ -629,12 +682,17 @@ loadAppConfig(() => {
 								}, save, force, update);
 							};
 							if (checkSIDs && packageType !== 'user') {
-								checkPackageAvailability(packageId, (availability) => {
+								checkPackageAvailability(installId, (availability) => {
 									switch (availability) {
 										case 'public': {
 											getPackageSidFromHid(installId, (sid) => {
 												installId = sid;
 												if (installedIds.indexOf(installId) === -1) {
+													if (update && !isPackageInstalled(installId, folder ? folder : undefined) === false) {
+														log(`Package not installed: "${installId}"`);
+														skippedInstalls++;
+														iterate();
+													}
 													install();
 												} else {
 													skippedInstalls++;
@@ -647,12 +705,12 @@ loadAppConfig(() => {
 										case 'deleted': {
 											uninstallable++;
 											skippedInstalls++;
-											log(`Package ${packageId} cannot be installed — it has been deleted`);
+											log(`Error: Package "${installId}" has been deleted`);
 											iterate();
 										}
 											break;
 										case 'nonexistent': {
-											log(`Package ${packageId} cannot be installed — it does not exist`);
+											log(`Error: Package "${installId}" does not exist`);
 											iterate();
 										}
 											break;
@@ -684,6 +742,10 @@ loadAppConfig(() => {
 					case 'uninstall': {
 						let packageId = cmdBaseArgs[1];
 						let save = true;
+
+						if (cmdConfig['dir']) {
+							die('Cannot uninstall from a subdirectory');
+						}
 						if (conf = cmdConfig['save']) {
 							save = getConfigBool(conf[0]);
 						}
@@ -714,11 +776,12 @@ loadAppConfig(() => {
 							}
 							break;
 						}
-						if (!isValidLoosePackageId(packageId)) {
-							die(`Invalid package identifier`);
+						if (!isValidPackageUpdateId(packageId)) {
+							die(`Invalid package identifier for uninstalling`);
 						}
 						packageId = getMajorInstallId(packageId);
 						let packageType = getPackageTypeFromSid(packageId);
+						
 						let proceed = () => {
 							let installDir = getInstallDirFromInstallId(packageId);
 							let dependencyIndex = package.dependencies.indexOf(packageId);
@@ -763,8 +826,10 @@ loadAppConfig(() => {
 												if (dependency.type === 'user') {
 													/* Remove user directory if this was the last package of user */
 													let deleteDir = true;
-													for (let _dependencyId of dependency.package.dependencies) {
-														let _dependency = dependencies[_dependencyId];
+													for (let _dependency of dependencies) {
+														if(_dependency === dependency){
+															continue;
+														}
 														if (_dependency.refCount !== 0 && _dependency.package !== null && _dependency.package.username === dependency.package.username) {
 															deleteDir = false;
 															break;
@@ -944,8 +1009,8 @@ loadAppConfig(() => {
 						}
 					}
 						break;
-					case 'dist-tag':
-					case 'dist-tags': {
+					case 'dist-tags':
+					case 'dist-tag': {
 						let subCmd = cmdBaseArgs[1];
 						if (subCmd === undefined) {
 							showCommandHelp('dist-tag');
@@ -1566,10 +1631,6 @@ loadAppConfig(() => {
 						}
 					}
 						break;
-					case '-v':
-					case '--version':
-						die(version);
-						break;
 					case 'version':
 						let varg = cmdBaseArgs[1];
 						if (varg === undefined) {
@@ -1578,7 +1639,7 @@ loadAppConfig(() => {
 						if (!existsAsFile(packageJsonPath)) {
 							die('No package file, please run "bjspm init" first');
 						}
-						if (semverValid(varg)) {
+						if (semverValid(varg) !== null) {
 							if (!semverGt(varg, package.version)) {
 								die(`New version must be greater than current version (${package.version})`);
 							}
@@ -1714,6 +1775,58 @@ loadAppConfig(() => {
 							});
 						}
 						break;
+					case 'c':
+					case 'config': {
+						let listConfigParams = () => {
+							die(appConfig);
+						};
+						switch (cmdBaseArgs[1]) {
+							case 'get': {
+								let param = cmdBaseArgs[2];
+
+								if (param === undefined) {
+									listConfigParams();
+								}
+								die(appConfig[param]);
+							}
+								break;
+							case 'set': {
+								let param = cmdBaseArgs[2];
+								let value = cmdBaseArgs[3];
+
+								if (param === undefined || value === undefined) {
+									showCommandHelp('config');
+								}
+								try {
+									appConfig[param] = JSON.parse(value);
+								} catch(e){
+									appConfig[param] = value;
+								}
+								storeAppConfig();
+								process.exit();
+							}
+								break;
+							case 'delete': {
+								let param = cmdBaseArgs[2];
+
+								if (param === undefined) {
+									showCommandHelp('config');
+								}
+								delete appConfig[param];
+								storeAppConfig();
+								process.exit();
+							}
+								break;
+							case 'ls':
+							case 'list': {
+								listConfigParams();
+							}
+								break;
+							default:
+								showCommandHelp('config');
+						}
+					}
+						break;
 					case 'api': {
 						if (cmdArgs[1] === undefined) {
 							break;
@@ -1733,7 +1846,7 @@ loadAppConfig(() => {
 							package.sid = '';
 							storePackage();
 
-							if(fs.existsSync(filePathsPath)){
+							if (fs.existsSync(filePathsPath)) {
 								fs.unlinkSync(filePathsPath);
 							}
 							die('Package reset', obj);
@@ -1741,6 +1854,7 @@ loadAppConfig(() => {
 					}
 						break;
 					case 'test':
+						die(getMajorInstallId('gijs/test@latest'));
 						break;
 					default:
 						showQuickHelp();
@@ -1783,21 +1897,7 @@ function die(...args) {
 	process.exit();
 }
 
-function explodeArgs(args) {
-	let newArgs = [];
-	for (let i = 0; i < args.length; i++) {
-		let arg = args[i];
-		let index = arg.indexOf('=');
-		if (index === -1) {
-			newArgs.push(arg);
-		} else {
-			newArgs.push(arg.substr(0, index), arg.substr(index + 1));
-		}
-	}
-	return newArgs;
-}
-
-function getArgsConfig(args) {
+function getArgsConfig(args, singletons) {
 	let config = {
 		[baseArgs]: []
 	};
@@ -1805,17 +1905,41 @@ function getArgsConfig(args) {
 	for (let i = 0; i < args.length; i++) {
 		let arg = args[i];
 		switch (arg) {
+			case '-v':
+				arg = '--version';
+			break;
+			case '-h':
+			case '-?':
+			case '-help':
+			case '-H':
+				arg = '--usage';
+				break;
 			case '-f':
 				arg = '--force';
 				break;
+			case '-l':
+				arg = '--long';
+				break;
 		}
-		if (arg.startsWith('--')) {
-			let key = arg.substr(2).toLowerCase();
+		if (arg.startsWith('-')) {
+			let split = arg.substr(arg.startsWith('--') ? 2 : 1).toLowerCase().split('=');
+			let key = split[0];
+
 			if (key in config) {
 				continue;
 			}
-			config[key] = [];
-			activeKey = key;
+			if (split[1] !== undefined) {
+				config[key] = [split[1]];
+				activeKey = null;
+			} else {
+				config[key] = [];
+
+				if (singletons.indexOf(key) === -1) {
+					activeKey = key;
+				} else {
+					activeKey = null;
+				}
+			}
 		} else {
 			if (activeKey !== null) {
 				config[activeKey].push(arg);
@@ -1876,11 +2000,15 @@ async function apiPost(formData, callback, onGotError = _onGotError) {
 	const form = new FormData();
 	for (let key in formData) {
 		if (formData[key] !== null && formData[key] !== undefined) {
-			form.append(key, formData[key]);
+			if (typeof formData[key] === 'boolean') {
+				form.append(key, formData[key] ? '1' : '0');
+			} else {
+				form.append(key, formData[key]);
+			}
 		}
 	}
 	try {
-		const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+		const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 			body: form
 		});
 		try {
@@ -2041,17 +2169,18 @@ function deletePackageTags(packageId, tags, authToken, callback) {
 	});
 }
 
-function getUserPackagePermissions(packageId, authToken, callback) {
+function getUserPackagePermissions(packageId, authToken, callback, defaultToAllGranted = false) {
 	apiPost({
 		action: 'GET_GRANTED_PERMISSIONS',
 		package: packageId,
-		authToken: authToken
+		authToken: authToken,
+		grant: defaultToAllGranted
 	}, (obj) => {
 		callback(obj.permissions);
 	});
 }
 
-function getAuthTokenWithPackagePermissions(packageId, permissions, callback) {
+function getAuthTokenWithPackagePermissions(packageId, permissions, callback, defaultToAllGranted = false) {
 	let packageBsid = getPackageBsidFromSid(packageId);
 
 	let tokens = [];
@@ -2085,7 +2214,7 @@ function getAuthTokenWithPackagePermissions(packageId, permissions, callback) {
 				}
 			}
 			callback(token);
-		});
+		}, defaultToAllGranted);
 	};
 	iterate();
 }
@@ -2179,14 +2308,8 @@ function isRegisteredPackageSid(sid, callback) {
 }
 
 function getAppDataPackagePath(packageId, patch) {
-	let fileName = packageId.replace('/', '@');
-
-	if (patch !== undefined) {
-		let toShort = patch.indexOf('@') !== -1 ? patch.split('@')[1] : patch;
-
-		fileName = `patch_${fileName}_from_${toShort}`;
-	}
-	let filePath = path.resolve(appConfig.packageCachePath, fileName + '.zip');
+	let fileNameHash = getHash(packageId + patch, 'md5');
+	let filePath = path.resolve(appConfig.packageCachePath, fileNameHash + '.zip');
 	return filePath;
 }
 
@@ -2242,11 +2365,15 @@ function getMajorInstallId(installId) {
 		return installId;
 	}
 	if (installId.indexOf('/') !== -1) {
-		let split = installId.split('@');
-		let bsid = split[0];
-		let version = split[1];
-		let major = semverMajor(version);
-		return `${bsid}${major}`;
+		let matches = installId.match(regexInstallUser);
+		let user = matches[1];
+		let packageName = matches[2];
+		let packageVersion = regexMajorVersion.test(matches[3]) ? matches[3] : (isValidPackageVersion(matches[3]) ? semverMajor(matches[3]) : null);
+
+		if (packageVersion === null) {
+			return null;
+		}
+		return `${user}/${packageName}${packageVersion}`;
 	} else {
 		return installId;
 	}
@@ -2283,6 +2410,19 @@ function getPackageFromInstallId(installId, callback, baseDir) {
 		}
 		return null;
 	}
+}
+
+function isPackageInstalled(installId, baseDir) {
+	let packageDir = getInstallDirFromInstallId(installId, baseDir);
+	if (packageDir === null) {
+		return undefined;
+	}
+	if (!fs.existsSync(packageDir)) {
+		return false;
+	}
+	let packageFile = path.resolve(packageDir, 'bjspm', 'package.json');
+
+	return fs.existsSync(packageFile);
 }
 
 function getDependencies(package, callback, getSubDependencies = true, dependencies = []) {
@@ -2331,6 +2471,10 @@ function existsAsFile(filePath) {
 	if (!fs.existsSync(filePath)) {
 		return false;
 	}
+	return isFile(filePath);
+}
+
+function isFile(filePath) {
 	let stats = fs.statSync(filePath);
 	return stats.isFile();
 }
@@ -2339,6 +2483,10 @@ function existsAsDirectory(filePath) {
 	if (!fs.existsSync(filePath)) {
 		return false;
 	}
+	return isDirectory(filePath);
+}
+
+function isDirectory(filePath) {
 	let stats = fs.statSync(filePath);
 	return stats.isDirectory();
 }
@@ -2351,42 +2499,50 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 	let authToken = undefined;
 	let proceed = () => {
 		let packageBaseId = null;
+
 		if (packageId.indexOf('/') !== -1) {
 			let matches = packageId.match(regexInstallUser);
 			let user = matches[1];
 			let packageName = matches[2];
 			let packageVersion = matches[3];
 			packageBaseId = `${user}/${packageName}`;
+
 			getPackageVersions(packageBaseId, (versions) => {
 				if (versions.length === 0) {
-					die('Could not retrieve package versions from server');
+					die(`Cannot install "${packageId}" – no package versions found`);
 				}
 				getPackageTags(packageBaseId, (tags) => {
 					if (tags.length === 0) {
 						die('Could not retrieve package tags from server');
 					}
-					if (packageVersion.length === 0) {
+					let noVersionSpecified = packageVersion.length === 0;
+					if (noVersionSpecified) {
 						packageVersion = tags['latest'];
 					}
 					if (semverValidRange(packageVersion) !== null) {
 						let highestMatch = semverMaxSatisfying(versions, packageVersion);
+
 						if (highestMatch === null) {
-							log(`Could not install "${packageId}", error:`);
-							die('Could not find resolve version');
+							if (noVersionSpecified) {
+								packageVersion = versions[versions.length - 1];
+							} else {
+								die(`Cannot install "${packageId}" – version range does not match any available version`);
+							}
+						} else {
+							packageVersion = highestMatch;
 						}
-						packageVersion = highestMatch;
 					} else if (isValidPackageTag(packageVersion)) {
 						if (tags[packageVersion] === undefined) {
-							log(`Could not install "${packageId}", error:`);
-							log('No such package tag, available tags:');
+							log(`Cannot install "${packageId}" – package tag does not exist.`);
+							log('Available tags:');
 							die(Object.keys(tags));
 						}
 						packageVersion = tags[packageVersion];
 					} else if (isValidPackageVersionMajor(packageVersion)) {
 						let highestMatch = semverMaxSatisfying(versions, `${packageVersion}.x`);
+
 						if (highestMatch === null) {
-							log(`Could not install "${packageId}", error:`);
-							die('Could not find resolve version');
+							log(`Cannot install "${packageId}" – major version does not match any available version`);
 						}
 						packageVersion = highestMatch;
 					} else if (!semverValid(packageVersion)) {
@@ -2397,6 +2553,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 					}
 					let versionMajor = semverMajor(packageVersion);
 					let dependency = `${user}/${packageName}${versionMajor}`;
+
 					let saveDependency = () => {
 						if (save && package.dependencies.indexOf(dependency) === -1) {
 							package.dependencies.push(dependency);
@@ -2409,21 +2566,23 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 						let targetPath = path.resolve(folder || packagesPath, `${user}`, `${packageName}${versionMajor}`);
 						let proceed = () => {
 							let downloadId = `${packageBaseId}@${packageVersion}`;
-							let download = () => {
-								installPackageChain(downloadId, dlType, targetPath, (filepath, installed) => {
-									saveDependency();
-									callback({ filepath: filepath, version: packageVersion });
-								}, authToken, force);
-							};
-							download();
+
+							installPackageChain(downloadId, dlType, targetPath, (filepath, installed) => {
+								saveDependency();
+								callback({ filepath: filepath, version: packageVersion });
+							}, authToken, force);
 						};
 						if (pk === null) {
+							if (!update && !force && fs.existsSync(targetPath)) {
+								callback(null, 'dir_exists');
+								return;
+							}
 							proceed();
 						} else if (!force && packageVersion === pk.version) {
 							if (update) {
 								installPackageDependencies(dlType, targetPath, (filepath, installed) => {
 									if (installed === 0) {
-										callback(null, 'no_update', saveDependency(), dependency);
+										callback(null, 'no_update');
 									} else {
 										callback({ filepath: filepath, version: packageVersion });
 									}
@@ -2449,50 +2608,65 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 				}
 				return false;
 			};
-			if (!force && fs.existsSync(getInstallDirFromInstallId(packageBaseId))) {
-				callback(null, 'dir_exists', saveDependency(), packageBaseId);
-				return;
-			}
-			let targetPath;
-			if (folder !== null) {
-				targetPath = path.resolve(folder, packageBaseId);
-			} else {
-				targetPath = path.resolve(packagesPath, packageBaseId);
-			}
-			let download = () => {
-				installPackageChain(downloadId, dlType, targetPath, (filepath) => {
-					saveDependency();
-					callback({ filepath: filepath });
-				}, authToken, force);
-			};
-			if (folder === null) {
-				deleteDirectory(targetPath, (err) => {
-					if (err) {
-						die(panickMsg, err);
+			getPackageFromInstallId(packageBaseId, (pk) => {
+				let targetPath = path.resolve(folder || packagesPath, packageBaseId);
+				let proceed = () => {
+					installPackageChain(packageBaseId, dlType, targetPath, (filepath, installed) => {
+						saveDependency();
+						callback({ filepath: filepath });
+					}, authToken, force);
+				};
+				if (pk === null) {
+					if (!force && fs.existsSync(targetPath)) {
+						callback(null, 'dir_exists');
+						return;
 					}
-					download();
-				});
-			} else {
-				download();
-			}
+					proceed();
+				} else if (!force) {
+					if (update) {
+						installPackageDependencies(dlType, targetPath, (filepath, installed) => {
+							if (installed === 0) {
+								callback(null, 'no_update');
+							} else {
+								callback({ filepath: filepath });
+							}
+						}, force, true);
+					} else {
+						callback(null, 'same_version');
+					}
+				} else {
+					proceed();
+				}
+			}, folder ? folder : undefined);
 		}
 	};
-	checkPackageAvailability(packageId, (availability) => {
+	let _packageId = packageId;
+	if (packageId.indexOf('/') !== -1) {
+		let matches = packageId.match(regexInstallUser);
+		let user = matches[1];
+		let packageName = matches[2];
+		let packageVersion = matches[3];
+
+		if (!isValidPackageVersion(packageVersion) && semverValidRange(packageVersion) !== null) {
+			_packageId = `${user}/${packageName}`;
+		}
+	}
+	checkPackageAvailability(_packageId, (availability) => {
 		switch (availability) {
 			case 'public':
 				proceed();
 				break;
 			case 'deleted_permanently':
 			case 'deleted':
-				log(`Package ${packageId} cannot be installed — it has been deleted`);
+				log(`Error: Package "${packageId}" has been deleted`);
 				callback(null);
 				break;
 			case 'nonexistent':
-				log(`Package ${packageId} does not exist`);
+				log(`Error: Package "${packageId}" does not exist`);
 				callback(null);
 				break;
 			default:
-				getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
+				getAuthTokenWithPackagePermissions(_packageId, ['mayRead'], (token) => {
 					if (token === null) {
 						log(`Please enter your croncle.com account credentials to install "${packageId}"`);
 						pollUsername((username) => {
@@ -2513,9 +2687,13 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 function installPackageDependencies(dlType, targetPath, callback, force = false, update = false) {
 	let installed = 0;
 	let packageFile = path.resolve(targetPath, 'bjspm', 'package.json');
+
 	if (fs.existsSync(packageFile)) {
 		loadJsonFile(packageFile, (obj) => {
 			if (obj !== null) {
+				let packageType = getPackageType(obj);
+				let basePath = path.resolve(targetPath, packageType === 'user' ? '../../' : '../');
+
 				if (obj.dependencies !== undefined) {
 					let i = 0;
 					let installNext = () => {
@@ -2524,7 +2702,7 @@ function installPackageDependencies(dlType, targetPath, callback, force = false,
 							return;
 						}
 						let dependency = obj.dependencies[i++];
-						installPackage(`${dependency}`, null, dlType, (result) => {
+						installPackage(`${dependency}`, basePath, dlType, (result) => {
 							if (result !== null) {
 								installed++;
 							}
@@ -2545,23 +2723,6 @@ function installPackageChain(packageId, dlType, targetPath, callback, authToken,
 		installPackageDependencies(dlType, targetPath, callback, force, update);
 	}, authToken);
 }
-
-// function deleteDirectory(path) {
-// 	if (!fs.existsSync(path)) {
-// 		return false;
-// 	}
-// 	let files = getSubFiles(path);
-// 	let dirs = getSubDirectories(path).sort((a, b) => b.length - a.length);
-
-// 	for (let file of files) {
-// 		fs.unlinkSync(file);
-// 	}
-// 	for (let dir of dirs) {
-// 		fs.rmdirSync(dir);
-// 	}
-// 	fs.rmdirSync(path);
-// 	return true;
-// }
 
 function deleteDirectory(path, callback) {
 	rimraf(path, { disableGlob: true }, callback);
@@ -2605,7 +2766,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 	if (patchFrom === undefined) {
 		let currentPackage = getPackageFromInstallId(packageId, undefined, basePath);
 
-		if (currentPackage !== null) {
+		if (currentPackage !== null && packageId !== currentPackage.sid) {
 			patchFrom = currentPackage.sid;
 		}
 	}
@@ -2636,10 +2797,10 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 
 					let extractDir;
 					if (patchFrom === undefined) {
-						log('Extracting files from package...');
+						log('Extracting files from package archive...');
 						extractDir = targetPath;
 					} else {
-						log('Extracting new files from patch archive...');
+						log('Extracting files from patch archive...');
 						extractDir = path.resolve(targetPath, 'tmp_' + randomBase36(16));
 						fs.mkdirSync(extractDir);
 					}
@@ -2762,10 +2923,10 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 			};
 			if (fs.existsSync(zipPath)) {
 				if (patchFrom === undefined) {
-					log(`Package "${urlArray.base}" found in cache`);
+					log(`\nPackage "${urlArray.base}" found in cache`);
 					log(`Verifying package integrity...`);
 				} else {
-					log(`Package patch "${patchFrom}" -> "${packageId}" found in cache`);
+					log(`\nPackage patch "${patchFrom}" -> "${packageId}" found in cache`);
 					log(`Verifying package patch integrity...`);
 				}
 				getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
@@ -2787,7 +2948,6 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 				});
 			} else {
 				let url = urlArray[dlType];
-				log(urlArray);
 				getPackageJson(urlArray.base, (dlPackage) => {
 					let prefix = ' -> ';
 					let downloadIndex = 0;
@@ -2843,9 +3003,9 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 					}
 					if (urlIndex === 0) {
 						if (patchFrom !== undefined) {
-							log(`Downloading package patch "${patchFrom}" -> "${packageId}"`);
+							log(`\nDownloading package patch "${patchFrom}" -> "${packageId}"`);
 						} else {
-							log(`Downloading package "${urlArray.base}"`);
+							log(`\nDownloading package "${urlArray.base}"`);
 						}
 					}
 					if (authToken !== undefined) {
@@ -2908,7 +3068,7 @@ function getPackageTags(packageId, callback, authToken) {
 		callback(packageTagsCache[packageId]);
 		return;
 	}
-	let url = webPackagesPath + packageId + '?tags' + (authToken ? `&authToken=${authToken}` : '');
+	let url = getWebPackagesPath() + packageId + '?tags' + (authToken ? `&authToken=${authToken}` : '');
 	let _callback = (obj) => {
 		packageTagsCache[packageId] = obj;
 		callback(obj);
@@ -2921,7 +3081,7 @@ function getPackageVersions(packageId, callback, authToken) {
 		callback(packageVersionsCache[packageId]);
 		return;
 	}
-	let url = webPackagesPath + packageId + '?versions' + (authToken ? `&authToken=${authToken}` : '');
+	let url = getWebPackagesPath() + packageId + '?versions' + (authToken ? `&authToken=${authToken}` : '');
 	let _callback = (obj) => {
 		packageVersionsCache[packageId] = obj;
 		callback(obj);
@@ -2929,13 +3089,13 @@ function getPackageVersions(packageId, callback, authToken) {
 	getJson(url, _callback);
 }
 
-function getPackageJson(packageId, callback, authToken, patch, suffix) {
-	let url = webPackagesPath + packageId + '?json' + (patch ? `&patch=${patch}` : '') + (authToken ? `&authToken=${authToken}` : '') + suffix;
+function getPackageJson(packageId, callback, authToken, patch, suffix = '') {
+	let url = getWebPackagesPath() + packageId + '?json' + (patch ? `&patch=${patch}` : '') + (authToken ? `&authToken=${authToken}` : '') + suffix;
 	getJson(url, callback);
 }
 
 function getBjspmPackageJson(packageId, callback, authToken, onError) {
-	let url = webPackagesPath + packageId + '/bjspm/package.json' + (authToken ? `&authToken=${authToken}` : '');
+	let url = getWebPackagesPath() + packageId + '/bjspm/package.json' + (authToken ? `&authToken=${authToken}` : '');
 	getJson(url, callback, onError);
 }
 
@@ -2972,9 +3132,9 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			let uploadIndex = 0;
 			let prefix = ' -> ';
 			let prevPercent = -1;
-			let toLog = fileData.totalSize > logUploadThreshold;
+			let toLog = fileData.totalSize > appConfig.logUploadThreshold;
 
-			const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+			const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
@@ -3031,7 +3191,7 @@ function uploadReadme(authToken, callback, onGotError = _onGotError) {
 			}
 		}
 		try {
-			const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+			const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
@@ -3071,7 +3231,7 @@ function uploadPreviewImage(imgName, authToken, callback, onGotError = _onGotErr
 			}
 		}
 		try {
-			const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+			const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
@@ -3109,7 +3269,7 @@ function uploadDescription(description, authToken, callback, onGotError = _onGot
 			}
 		}
 		try {
-			const { body } = await got.post(`https://${CRONCLE_BJSPM}/api.php`, {
+			const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
@@ -3189,6 +3349,10 @@ function getFileChecksum(path, algorithm, callback) {
 	}
 }
 
+function getHash(str, algorithm) {
+	return crypto.createHash(algorithm).update(str, 'utf8').digest('hex');
+}
+
 function getValidLicense(str) {
 	let index = licencesLowerCase.indexOf(str.toLowerCase());
 	if (index === -1) {
@@ -3211,7 +3375,7 @@ function isValidUsername(name) {
 }
 
 function isValidPackageTag(tag) {
-	return isString(tag) && tag.length < 256 && !semverValid(tag) && !isValidPackageVersionMajor(tag);
+	return isString(tag) && tag.length < 256 && !semverValid(tag) && !semverValidRange(tag) && !isValidPackageVersionMajor(tag);
 }
 
 function isValidPackageName(name) {
@@ -3230,6 +3394,13 @@ function isValidPackageInstallId(id) {
 		return false;
 	}
 	return regexInstallUser.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
+}
+
+function isValidPackageUpdateId(id) {
+	if (!isString(id)) {
+		return false;
+	}
+	return regexUserMajor.test(id) || regexNamed.test(id) || regexUnnamed.test(id);
 }
 
 function isValidLoosePackageId(id) {
@@ -3294,7 +3465,234 @@ function isValidPackage() {
 	}
 }
 
-function zipFiles(files, callback, logZipping) {
+function mayRead(file) {
+	try {
+		fs.accessSync(file, fs.constants.R_OK);
+		return true;
+	} catch (err) {
+		return false;
+	}
+}
+
+function mayWrite(file) {
+	try {
+		fs.accessSync(file, fs.constants.W_OK);
+		return true;
+	} catch (err) {
+		return false;
+	}
+}
+
+function validatePackagePaths(files, baseDirs) {
+	let paths = [];
+	let upperPaths = [];
+	let filePaths = [];
+	let fileUpperPaths = [];
+	let assocPaths = [];
+	let _files = [];
+	let baseDirIndex = 0;
+
+	for (let file of files) {
+		let baseDir = baseDirs[baseDirIndex++];
+
+		if (path.isAbsolute(file)) {
+			let baseName = path.basename(file);
+			let upper = baseName.toUpperCase();
+			let upperIndex = upperPaths.indexOf(upper);
+
+			if (upperIndex === -1) {
+				paths.push(baseName);
+				upperPaths.push(upper);
+				filePaths.push(file);
+				fileUpperPaths.push(file.toUpperCase());
+				assocPaths.push(file);
+				_files.push(file);
+			} else {
+				if (filePaths.indexOf(file) !== -1) {
+					die(12, `Cannot add the same file twice: "${file}".`);
+				} else {
+					if (paths.indexOf(baseName) !== -1) {
+						die(5679, `File name conflict: cannot have both "${assocPaths[upperIndex]}" and "${file}".`);
+					} else {
+						die(99, `For cross-OS compatibility, file names are case-insensitive. Cannot have both "${paths[upperIndex]}" and "${file}".`);
+					}
+				}
+			}
+		} else {
+			let _file = resolvePath(baseDir, file);
+			let _dir = resolvePath(baseDir);
+			let localFile = _file.substr(_dir.length);
+
+			if (localFile.length === 0) {
+				localFile = '.';
+			}
+
+			let parts = localFile.split('/');
+			let defaultPath = '';
+			let upperPath = '';
+
+			if (parts[parts.length - 1].length === 0) {
+				parts.length--;
+			}
+
+			for (let i = 0; i < parts.length; i++) {
+				let part = parts[i];
+
+				defaultPath += part;
+				upperPath += part.toUpperCase();
+
+				let pathIndex = upperPaths.indexOf(upperPath);
+
+				if (pathIndex !== -1) {
+					if (paths.indexOf(defaultPath) === -1) {
+						die(88, `For cross-OS compatibility, file names are case-insensitive. Cannot have both "${paths[pathIndex]}" and "${defaultPath}".`);
+					} else {
+						if (i === parts.length - 1) {
+							if (filePaths.indexOf(defaultPath) !== -1) {
+								die(555, `Cannot add the same file twice: "${defaultPath}".`);
+							} else {
+								let assocPath = assocPaths[pathIndex];
+
+								if (assocPath.startsWith(_dir)) {
+									assocPath = assocPath.substr(_dir.length);
+								}
+								die(6636, `File name conflict: cannot have both "${assocPath}" and "${localFile}".`);
+							}
+						}
+					}
+				} else {
+					paths.push(defaultPath);
+					upperPaths.push(upperPath);
+					assocPaths.push(_file);
+
+					if (i === parts.length - 1) {
+						_files.push(localFile);
+					}
+				}
+
+				if (i !== parts.length - 1) {
+					defaultPath += '/';
+					upperPath += '/';
+				}
+			}
+		}
+	}
+	return _files;
+}
+
+function getPackageFilePaths(files, baseDir, result = [], baseDirs = [], addEmptyDirsAtDepth0 = true) {
+	for (let file of files) {
+		let resDot = resolvePath(baseDir);
+		let resFile = resolvePath(baseDir, file);
+		let isOuterFile = !resFile.startsWith(resDot);
+		let localFile = resFile.substr(resDot.length);
+
+		if (isDirectory(resFile)) {
+			let entries = getDirectoryFiles(resFile);
+
+			if (entries.length === 0 && addEmptyDirsAtDepth0) {
+				if (isOuterFile) {
+					result.push(resFile);
+					baseDirs.push(baseDir);
+				} else {
+					if (localFile.length === 0) {
+						result.push(path.basename(baseDir) + '/');
+						baseDirs.push(resolvePath(baseDir, '..'));
+					} else {
+						result.push(localFile);
+						baseDirs.push(baseDir);
+					}
+				}
+			}
+
+			for (let entry of entries) {
+				let _resFile = resolvePath(resFile, entry.path);
+
+				if (isDirectory(_resFile)) {
+					getPackageFilePaths([localFile + entry.path], baseDir, result, baseDirs);
+				} else {
+					result.push(localFile + entry.path);
+					baseDirs.push(baseDir);
+				}
+			}
+		} else {
+			if (isOuterFile) {
+				result.push(resFile);
+				baseDirs.push(baseDir);
+			} else {
+				result.push(localFile);
+				baseDirs.push(baseDir);
+			}
+		}
+	}
+}
+
+function getValidatedPackagePaths(files, subFilesOnly = false) {
+	let orgPaths = [];
+	let resPaths = [];
+
+	for (let file of files) {
+		if (!fs.existsSync(file)) {
+			die(`Non-existent file: "${file}"`);
+		}
+		let res = path.resolve(file);
+		let resIndex = resPaths.indexOf(res);
+
+		if (resIndex !== -1) {
+			if (orgPaths[resIndex] === file) {
+				die(`Cannot add the same file twice: "${file}".`);
+			} else {
+				die(`Cannot add the same file twice: "${orgPaths[resIndex]}" and "${file}".`);
+			}
+		}
+		orgPaths.push(file);
+		resPaths.push(res);
+	}
+
+	let paths = [];
+	let _files = [];
+	let baseDirs = [];
+
+	for (let file of files) {
+		let stats = fs.statSync(file);
+
+		if (stats.isDirectory()) {
+			if (subFilesOnly) {
+				getPackageFilePaths(['.'], file, paths, baseDirs, false);
+			} else {
+				let baseName = path.basename(resolvePath(file));
+
+				getPackageFilePaths([baseName], resolvePath(file, '..'), paths, baseDirs, true);
+			}
+		} else {
+			_files.push(file);
+		}
+	}
+	getPackageFilePaths(_files, '.', paths, baseDirs);
+
+	validatePackagePaths(paths, baseDirs);
+
+	let fullPaths = [];
+
+	for (let i = 0; i < paths.length; i++) {
+		fullPaths.push(resolvePath(baseDirs[i], paths[i]));
+	}
+
+	let result = new Array(paths.length);
+
+	for (let i = 0; i < paths.length; i++) {
+		result[i] = {
+			path: paths[i],
+			baseDir: baseDirs[i],
+			fullPath: fullPaths[i]
+		};
+	}
+	return result;
+}
+
+function zipFiles(files, callback, logZipping, subFilesOnly) {
+	let _files = getValidatedPackagePaths(files, subFilesOnly);
+
 	tmp.dir({ unsafeCleanup: true }, (err, tmpDir, cleanupCallback) => {
 		if (err) {
 			die(panickMsg, err);
@@ -3308,56 +3706,30 @@ function zipFiles(files, callback, logZipping) {
 		});
 		archive.pipe(output);
 
-		for (let file of files) {
-			if (!fs.existsSync(file)) {
-				die(`Non-existent file: "${file}"`);
-			}
-			let stats = fs.statSync(file);
+		for (let file of _files) {
+			let stats = fs.statSync(file.fullPath);
+			let dpPath = file.path;
+
 			if (stats.isDirectory()) {
-				let entries = getDirectoryFiles(file, path.basename(file) + '/');
+				let entries = getDirectoryFiles(file.fullPath);
 				if (entries.length === 0) {
-					if (path.isAbsolute(file)) {
-						if (logZipping) {
-							log(`Packing ${file}...`);
-						}
-						archive.file(file, { name: path.basename(file) });
-					} else {
-						if (logZipping) {
-							log(`Packing ${file}...`);
-						}
-						archive.file(path.resolve('.', file), { name: file });
+					if (logZipping) {
+						log(`Packing ${dpPath}...`);
 					}
+					archive.file(file.fullPath, { name: file.path });
 				} else {
-					for (let entry of entries) {
-						let entryStats = fs.statSync(entry.path);
-						totalSize += entryStats.size;
-						fileData.push({
-							path: entry.path,
-							size: entryStats.size
-						});
-						if (logZipping) {
-							log(`Packing ${entry.path}...`);
-						}
-						archive.file("./" + entry.path, { name: entry.path });
-					}
+					log(`Warning: not packing non-empty directory ${file.fullPath}`);
 				}
 			} else {
 				totalSize += stats.size;
 				fileData.push({
-					path: file,
+					path: file.path,
 					size: stats.size
 				});
-				if (path.isAbsolute(file)) {
-					if (logZipping) {
-						log(`Packing ${file}...`);
-					}
-					archive.file(file, { name: path.basename(file) });
-				} else {
-					if (logZipping) {
-						log(`Packing ${file}...`);
-					}
-					archive.file(path.resolve('.', file), { name: file });
+				if (logZipping) {
+					log(`Packing ${dpPath}...`);
 				}
+				archive.file(file.fullPath, { name: file.path });
 			}
 		}
 		fileData.sort((a, b) => a.size - b.size);
@@ -3380,6 +3752,14 @@ function zipPackage(callback, logZipping) {
 			die(panickMsg, err);
 		}
 		loadIgnores(() => {
+			let entries = getDirectoryFiles('.');
+			let paths = [];
+
+			for (let entry of entries) {
+				paths.push('./' + entry.path);
+			}
+
+			let files = getValidatedPackagePaths(paths, false);
 			let fileData = [];
 			let totalSize = 0;
 			let zipPath = path + '/archive.zip';
@@ -3389,8 +3769,7 @@ function zipPackage(callback, logZipping) {
 			});
 			archive.pipe(output);
 
-			let entries = getDirectoryFiles('.');
-			for (let entry of entries) {
+			for (let entry of files) {
 				let skip = false;
 				for (let ignoreGlob of ignoreGlobs) {
 					if (ignoreGlob.match(entry.path)) {
@@ -3412,7 +3791,7 @@ function zipPackage(callback, logZipping) {
 					if (logZipping) {
 						log(`Packing ${entry.path}...`);
 					}
-					archive.file("./" + entry.path, { name: entry.path });
+					archive.file('./' + entry.path, { name: entry.path });
 				}
 			}
 			fileData.sort((a, b) => a.size - b.size);
@@ -3568,13 +3947,13 @@ function getLoginAuthToken() {
 	}
 }
 
-function getPackageType() {
-	if (package.sid.length !== 0) {
-		return getPackageTypeFromSid(package.sid);
+function getPackageType(pk = package) {
+	if (pk.sid.length !== 0) {
+		return getPackageTypeFromSid(pk.sid);
 	}
-	if (package.name.length !== 0 && package.version.length !== 0 && package.username.length !== 0) { // user package
+	if (pk.name.length !== 0 && pk.version.length !== 0 && pk.username.length !== 0) { // user package
 		return 'user';
-	} else if (package.name.length !== 0) { // named standalone package
+	} else if (pk.name.length !== 0) { // named standalone package
 		return 'named';
 	} else { // unnamed standalone package
 		return 'unnamed';
@@ -3638,7 +4017,14 @@ function loadAppConfig(callback) {
 			if (err) {
 				die(panickMsg, err);
 			}
+			let _appConfig = appConfig; // Default app config
 			appConfig = JSON.parse(data);
+
+			for(let key in _appConfig){
+				if(!(key in appConfig)){
+					appConfig[key] = _appConfig[key];
+				}
+			}
 			callback();
 		});
 	} else {
@@ -3647,13 +4033,8 @@ function loadAppConfig(callback) {
 }
 
 function cleanAppConfig() {
-	let needsSaving = false;
-
 	if (appConfig.username !== null && authTokens[appConfig.username] === undefined) {
 		appConfig.username = null;
-		needsSaving = true;
-	}
-	if (needsSaving) {
 		storeAppConfig();
 	}
 }
@@ -3743,6 +4124,7 @@ function mkdirSync(dirPath) {
 
 function mksubdirSync(dirPath) {
 	dirPath = path.dirname(dirPath);
+
 	if (!fs.existsSync(dirPath)) {
 		fs.mkdirSync(dirPath, { recursive: true });
 	}
@@ -3753,10 +4135,10 @@ function storeAuthTokens() {
 	fs.writeFileSync(authTokenStore, json, 'utf8');
 }
 
-function storePackage() {
-	let json = JSON.stringify(package, undefined, 2);
-	mkdirSync(bjspmPath);
-	fs.writeFileSync(packageJsonPath, json, 'utf8');
+function storePackage(pk = package, file = packageJsonPath) {
+	let json = JSON.stringify(pk, undefined, 2);
+	mksubdirSync(file);
+	fs.writeFileSync(file, json, 'utf8');
 }
 
 function storeAppConfig() {
@@ -3810,6 +4192,19 @@ function getPackageBaseModuleString(dir) {
 
 function randomBase36(length) {
 	return new Array(length).fill(0).map(() => ((Math.random() * 36) | 0).toString(36)).join('');
+}
+
+function resolvePath(...args) {
+	let result = path.resolve.apply(this, args).replace(/\\/g, '/');
+
+	if (fs.existsSync(result)) {
+		let stats = fs.statSync(result);
+
+		if (stats.isDirectory()) {
+			result += '/';
+		}
+	}
+	return result;
 }
 
 function getAuthToken(username, callback, useAuthStore = true) {
@@ -3939,7 +4334,7 @@ Press ^C at any time to quit.
 						newPackage.description = description;
 						descriptionSet = true;
 					} else {
-						log('Invalid package description.\n');
+						log('Invalid package description');
 					}
 				}
 				log();
@@ -3980,7 +4375,7 @@ Press ^C at any time to quit.
 						newPackage.license = _license;
 						licenseSet = true;
 					} else {
-						log('Invalid license, must be a valid SPDX license expression.\n');
+						log('Invalid license, must be a valid SPDX license expression.');
 					}
 				}
 				log();
@@ -3997,15 +4392,17 @@ Press ^C at any time to quit.
 				if (hasDefault && username.length === 0) {
 					newPackage.username = defaultUsername;
 					usernameSet = true;
+					writePackage(newPackage);
 				} else {
 					if (isValidUsername(username) || username.length === 0) {
 						newPackage.username = username;
 						usernameSet = true;
+						writePackage(newPackage);
 					} else {
-						log('Invalid username');
+						log('Invalid username\n');
+						askQuestion();
 					}
 				}
-				writePackage(newPackage);
 			});
 		}
 	}
@@ -4014,14 +4411,20 @@ Press ^C at any time to quit.
 
 function showCommandHelp(cmd) {
 	switch (cmd) {
+//	init
+		case 'create':
+		case 'innit':
 		case 'init': {
 			log(`
 aliases: create, innit
 `);
 		}
 			break;
+//	install
 		case 'i':
-		case 'install': {
+		case 'isntall':
+		case 'install':
+		case 'add': {
 			log(`
 bjspm install (with no args, in package dir)
 bjspm install <hex-id>
@@ -4032,17 +4435,18 @@ bjspm install <user>/<pkg>@<version>
 bjspm install <user>/<pkg><version-major>
 bjspm install <user>/<pkg>@<version range>
 
-options: --force
+options: --no-save, --dir, --force
 
-alias: i, isntall, add`);
+aliases: i, isntall, add`);
 		}
 			break;
+//	uninstall
 		case 'u':
 		case 'un':
 		case 'unlink':
 		case 'remove':
-		case 'r':
 		case 'rm':
+		case 'r':
 		case 'uninstall': {
 			log(`
 bjspm uninstall (with no args, in package dir)
@@ -4054,6 +4458,10 @@ bjspm uninstall <user>/<pkg><version-major>
 aliases: u, un, unlink, remove, rm, r`);
 		}
 			break;
+//	update
+		case 'up':
+		case 'upgrade':
+		case 'udpate':
 		case 'update': {
 			log(`
 bjspm update [<pkg>...] [--force]
@@ -4061,16 +4469,17 @@ bjspm update [<pkg>...] [--force]
 alias: up, upgrade, udpate`);
 		}
 			break;
-		case 'p':
+//	publish
 		case 'publish': {
 			log(`
-bjspm publish [<file|folder>...] [--type <unnamed|named|user>] [--tag <tag>] [--access <public|restricted>]
+bjspm publish [<file|folder>...] [--type <unnamed|named|user>] [--tag <tag>] [--access <public|restricted>] [--sub]
 
 Publishes '.' if no argument supplied
 
 Sets tag \`latest\` if no --tag specified`);
 		}
 			break;
+//	unpublish
 		case 'unpublish': {
 			log(`
 bjspm unpublish (with no args, package dir)
@@ -4080,14 +4489,17 @@ bjspm unpublish <user>/<pkg>
 bjspm unpublish <user>/<pkg>@<version>`);
 		}
 			break;
+//	version
 		case 'version': {
 			log(`
 bjspm version [<newversion> | major | minor | patch | premajor | preminor | prepatch | prerelease] [--preid=<prerelease-id>]
 (run in package dir)
 'bjspm -v' or 'bjspm --version' to print bjspm version (${version})
+'bjspm view <pkg> version' to view a package's published version
 'bjspm ls' to inspect current package/dependency versions`);
 		}
 			break;
+//	push
 		case 'push': {
 			log(`
 bjspm push readme
@@ -4095,6 +4507,8 @@ bjspm push preview-image
 bjspm push description [<new description>]`);
 		}
 			break;
+//	dist-tag
+		case 'dist-tags':
 		case 'dist-tag': {
 			log(`
 bjspm dist-tag add <user>/<pkg>@<version> [<tag>]
@@ -4104,6 +4518,7 @@ bjspm dist-tag ls [<user>/<pkg>]
 alias: dist-tags`);
 		}
 			break;
+//	access
 		case 'access': {
 			log(`
 bjspm access public [<package>]
@@ -4114,6 +4529,7 @@ bjspm access ls-packages [<user>]
 bjspm access ls-collaborators [<package> [<user>]]`);
 		}
 			break;
+//	cache
 		case 'cache': {
 			log(`
 bjspm cache (with no args, shows info)
@@ -4122,6 +4538,10 @@ bjspm cache max-size [<mib> | none]
 bjspm cache dir [<new-dir-path>|default]`);
 		}
 			break;
+//	ls
+		case 'list':
+		case 'll':
+		case 'la':
 		case 'ls': {
 			log(`
 bjspm ls
@@ -4131,6 +4551,7 @@ options: --json, --depth
 aliases: list, la, ll`);
 		}
 			break;
+//	auth
 		case 'auth': {
 			log(`
 bjspm auth store [<user>]
@@ -4142,7 +4563,10 @@ bjspm auth ls
 options: --json, --depth`);
 		}
 			break;
+//	view
 		case 'v':
+		case 'info':
+		case 'show':
 		case 'view': {
 			log(`
 bjspm view <hex-id> [<field>[.subfield]...]
@@ -4154,6 +4578,19 @@ bjspm view <user>/<pkg><version-major>
 aliases: v, info, show`);
 		}
 			break;
+//	config
+		case 'c':
+		case 'config': {
+			log(`
+bjspm config set <key> <value>
+bjspm config get [<key>]
+bjspm config delete <key>
+bjspm config list [--json]
+bjspm config edit
+
+alias: c
+				`);
+		}
 		default:
 			showQuickHelp();
 	}
