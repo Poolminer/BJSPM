@@ -35,7 +35,8 @@
     "minimatch": "^3.0.4",
     "rimraf": "^3.0.2",
     "semver": "^7.2.1",
-    "tmp": "^0.1.0"
+    "tmp": "^0.1.0",
+    "true-case-path": "^2.2.1"
   },
   "devDependencies": {}
 }
