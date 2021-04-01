@@ -2092,7 +2092,7 @@ promptRequiredReading((_requiredReading) => {
 			}
 				break;
 			case 'test':
-				die([isValidPackageName(''), isValidPackageVersion(''), isValidPackageUsername('')]);
+				die(process.platform, path.resolve(getAppDataPath(), 'npm', 'bjspm.ps1'));
 				break;
 			default:
 				showQuickHelp();
