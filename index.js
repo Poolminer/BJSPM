@@ -11,7 +11,7 @@ const rimraf = require('rimraf');
 const getAppDataPath = require("appdata-path");
 const extract = require('extract-zip');
 const filesize = require('filesize');
-const { trueCasePath, trueCasePathSync } = require('true-case-path');
+const { trueCasePathSync } = require('true-case-path');
 const stream = require('stream');
 const sysout = new stream.Writable({
 	muted: false,
@@ -46,36 +46,38 @@ const packageBaseModuleJSPath = bjspmPath + 'index.js';
 const packageBaseModuleTSPath = bjspmPath + 'index.ts';
 const filePathsPath = bjspmPath + 'files.json';
 const regexUser = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)?$/;
-const regexUserVersioned = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/;
+const regexUserVersioned = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z](?:@(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?)$/;
 const regexUserMajor = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z]@?\d{1,9}$/;
 const regexUserNoVersion = /^[a-z0-9_]{1,16}\/[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z]$/;
-const regexInstallUser = /^([a-z0-9_]{1,16})\/([a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-z])@?(.*)$/;
+const regexInstallUser = /^([a-z0-9_]{1,16})\/([a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z])@?(.*)$/;
 const regexNamed = /^([a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z])_([A-F0-9]{1,7})$/;
 const regexUnnamed = /^[A-F0-9]{1,7}$/;
-const regexPackageName = /^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-z]$/;
+const regexPackageName = /^[a-zA-Z0-9][a-zA-Z0-9_\-\.]{0,240}[a-zA-Z]$/;
 const regexMajorVersion = /^\d{1,9}$/;
 const regexUsername = /^[A-Za-z0-9_]{1,16}$/;
 const regexPackageUsername = /^[a-z0-9_]{1,16}$/;
 const ignoresPaths = [
-	bjspmPath + 'ignore.txt',
 	cwdPath + '.gitignore',
+	cwdPath + '.npmignore',
+	bjspmPath + '.ignore'
 ];
 const appDataPath = getAppDataPath('BJSPM');
 const appDataConfigPath = appDataPath + path.sep + 'config.json';
 const authTokenStore = appDataPath + path.sep + 'authTokenStore.json';
+const requiredReadingStore = appDataPath + path.sep + 'hasRead.json';
 const API_STATUS = {
 	OK: 1,
 	ERR: 2
 }
 const licences = ['', '0BSD', 'AAL', 'Abstyles', 'Adobe-2006', 'Adobe-Glyph', 'ADSL', 'AFL-1.1', 'AFL-1.2', 'AFL-2.0', 'AFL-2.1', 'AFL-3.0', 'Afmparse', 'AGPL-1.0-only', 'AGPL-1.0-or-later', 'AGPL-3.0-only', 'AGPL-3.0-or-later', 'Aladdin', 'AMDPLPA', 'AML', 'AMPAS', 'ANTLR-PD', 'Apache-1.0', 'Apache-1.1', 'Apache-2.0', 'APAFML', 'APL-1.0', 'APSL-1.0', 'APSL-1.1', 'APSL-1.2', 'APSL-2.0', 'Artistic-1.0', 'Artistic-1.0-cl8', 'Artistic-1.0-Perl', 'Artistic-2.0', 'Bahyph', 'Barr', 'Beerware', 'BitTorrent-1.0', 'BitTorrent-1.1', 'blessing', 'BlueOak-1.0.0', 'Borceux', 'BSD-1-Clause', 'BSD-2-Clause', 'BSD-2-Clause-FreeBSD', 'BSD-2-Clause-NetBSD', 'BSD-2-Clause-Patent', 'BSD-3-Clause', 'BSD-3-Clause-Attribution', 'BSD-3-Clause-Clear', 'BSD-3-Clause-LBNL', 'BSD-3-Clause-No-Nuclear-License', 'BSD-3-Clause-No-Nuclear-License-2014', 'BSD-3-Clause-No-Nuclear-Warranty', 'BSD-3-Clause-Open-MPI', 'BSD-4-Clause', 'BSD-4-Clause-UC', 'BSD-Protection', 'BSD-Source-Code', 'BSL-1.0', 'bzip2-1.0.5', 'bzip2-1.0.6', 'Caldera', 'CATOSL-1.1', 'CC-BY-1.0', 'CC-BY-2.0', 'CC-BY-2.5', 'CC-BY-3.0', 'CC-BY-4.0', 'CC-BY-NC-1.0', 'CC-BY-NC-2.0', 'CC-BY-NC-2.5', 'CC-BY-NC-3.0', 'CC-BY-NC-4.0', 'CC-BY-NC-ND-1.0', 'CC-BY-NC-ND-2.0', 'CC-BY-NC-ND-2.5', 'CC-BY-NC-ND-3.0', 'CC-BY-NC-ND-4.0', 'CC-BY-NC-SA-1.0', 'CC-BY-NC-SA-2.0', 'CC-BY-NC-SA-2.5', 'CC-BY-NC-SA-3.0', 'CC-BY-NC-SA-4.0', 'CC-BY-ND-1.0', 'CC-BY-ND-2.0', 'CC-BY-ND-2.5', 'CC-BY-ND-3.0', 'CC-BY-ND-4.0', 'CC-BY-SA-1.0', 'CC-BY-SA-2.0', 'CC-BY-SA-2.5', 'CC-BY-SA-3.0', 'CC-BY-SA-4.0', 'CC-PDDC', 'CC0-1.0', 'CDDL-1.0', 'CDDL-1.1', 'CDLA-Permissive-1.0', 'CDLA-Sharing-1.0', 'CECILL-1.0', 'CECILL-1.1', 'CECILL-2.0', 'CECILL-2.1', 'CECILL-B', 'CECILL-C', 'CERN-OHL-1.1', 'CERN-OHL-1.2', 'ClArtistic', 'CNRI-Jython', 'CNRI-Python', 'CNRI-Python-GPL-Compatible', 'Condor-1.1', 'copyleft-next-0.3.0', 'copyleft-next-0.3.1', 'CPAL-1.0', 'CPL-1.0', 'CPOL-1.02', 'Crossword', 'CrystalStacker', 'CUA-OPL-1.0', 'Cube', 'curl', 'D-FSL-1.0', 'diffmark', 'DOC', 'Dotseqn', 'DSDP', 'dvipdfm', 'ECL-1.0', 'ECL-2.0', 'EFL-1.0', 'EFL-2.0', 'eGenix', 'Entessa', 'EPL-1.0', 'EPL-2.0', 'ErlPL-1.1', 'etalab-2.0', 'EUDatagrid', 'EUPL-1.0', 'EUPL-1.1', 'EUPL-1.2', 'Eurosym', 'Fair', 'Frameworx-1.0', 'FreeImage', 'FSFAP', 'FSFUL', 'FSFULLR', 'FTL', 'GFDL-1.1-only', 'GFDL-1.1-or-later', 'GFDL-1.2-only', 'GFDL-1.2-or-later', 'GFDL-1.3-only', 'GFDL-1.3-or-later', 'Giftware', 'GL2PS', 'Glide', 'Glulxe', 'gnuplot', 'GPL-1.0-only', 'GPL-1.0-or-later', 'GPL-2.0-only', 'GPL-2.0-or-later', 'GPL-3.0-only', 'GPL-3.0-or-later', 'gSOAP-1.3b', 'HaskellReport', 'HPND', 'HPND-sell-variant', 'IBM-pibs', 'ICU', 'IJG', 'ImageMagick', 'iMatix', 'Imlib2', 'Info-ZIP', 'Intel', 'Intel-ACPI', 'Interbase-1.0', 'IPA', 'IPL-1.0', 'ISC', 'JasPer-2.0', 'JPNIC', 'JSON', 'LAL-1.2', 'LAL-1.3', 'Latex2e', 'Leptonica', 'LGPL-2.0-only', 'LGPL-2.0-or-later', 'LGPL-2.1-only', 'LGPL-2.1-or-later', 'LGPL-3.0-only', 'LGPL-3.0-or-later', 'LGPLLR', 'Libpng', 'libpng-2.0', 'libtiff', 'LiLiQ-P-1.1', 'LiLiQ-R-1.1', 'LiLiQ-Rplus-1.1', 'Linux-OpenIB', 'LPL-1.0', 'LPL-1.02', 'LPPL-1.0', 'LPPL-1.1', 'LPPL-1.2', 'LPPL-1.3a', 'LPPL-1.3c', 'MakeIndex', 'MirOS', 'MIT', 'MIT-0', 'MIT-advertising', 'MIT-CMU', 'MIT-enna', 'MIT-feh', 'MITNFA', 'Motosoto', 'mpich2', 'MPL-1.0', 'MPL-1.1', 'MPL-2.0', 'MPL-2.0-no-copyleft-exception', 'MS-PL', 'MS-RL', 'MTLL', 'MulanPSL-1.0', 'Multics', 'Mup', 'NASA-1.3', 'Naumen', 'NBPL-1.0', 'NCSA', 'Net-SNMP', 'NetCDF', 'Newsletr', 'NGPL', 'NLOD-1.0', 'NLPL', 'Nokia', 'NOSL', 'Noweb', 'NPL-1.0', 'NPL-1.1', 'NPOSL-3.0', 'NRL', 'NTP', 'OCCT-PL', 'OCLC-2.0', 'ODbL-1.0', 'ODC-By-1.0', 'OFL-1.0', 'OFL-1.1', 'OGL-Canada-2.0', 'OGL-UK-1.0', 'OGL-UK-2.0', 'OGL-UK-3.0', 'OGTSL', 'OLDAP-1.1', 'OLDAP-1.2', 'OLDAP-1.3', 'OLDAP-1.4', 'OLDAP-2.0', 'OLDAP-2.0.1', 'OLDAP-2.1', 'OLDAP-2.2', 'OLDAP-2.2.1', 'OLDAP-2.2.2', 'OLDAP-2.3', 'OLDAP-2.4', 'OLDAP-2.5', 'OLDAP-2.6', 'OLDAP-2.7', 'OLDAP-2.8', 'OML', 'OpenSSL', 'OPL-1.0', 'OSET-PL-2.1', 'OSL-1.0', 'OSL-1.1', 'OSL-2.0', 'OSL-2.1', 'OSL-3.0', 'Parity-6.0.0', 'PDDL-1.0', 'PHP-3.0', 'PHP-3.01', 'Plexus', 'PostgreSQL', 'psfrag', 'psutils', 'Python-2.0', 'Qhull', 'QPL-1.0', 'Rdisc', 'RHeCos-1.1', 'RPL-1.1', 'RPL-1.5', 'RPSL-1.0', 'RSA-MD', 'RSCPL', 'Ruby', 'SAX-PD', 'Saxpath', 'SCEA', 'Sendmail', 'Sendmail-8.23', 'SGI-B-1.0', 'SGI-B-1.1', 'SGI-B-2.0', 'SHL-0.5', 'SHL-0.51', 'SimPL-2.0', 'SISSL', 'SISSL-1.2', 'Sleepycat', 'SMLNJ', 'SMPPL', 'SNIA', 'Spencer-86', 'Spencer-94', 'Spencer-99', 'SPL-1.0', 'SSH-OpenSSH', 'SSH-short', 'SSPL-1.0', 'SugarCRM-1.1.3', 'SWL', 'TAPR-OHL-1.0', 'TCL', 'TCP-wrappers', 'TMate', 'TORQUE-1.1', 'TOSL', 'TU-Berlin-1.0', 'TU-Berlin-2.0', 'UCL-1.0', 'Unicode-DFS-2015', 'Unicode-DFS-2016', 'Unicode-TOU', 'Unlicense', 'UPL-1.0', 'Vim', 'VOSTROM', 'VSL-1.0', 'W3C', 'W3C-19980720', 'W3C-20150513', 'Watcom-1.0', 'Wsuipa', 'WTFPL', 'X11', 'Xerox', 'XFree86-1.1', 'xinetd', 'Xnet', 'xpp', 'XSkat', 'YPL-1.0', 'YPL-1.1', 'Zed', 'Zend-2.0', 'Zimbra-1.3', 'Zimbra-1.4', 'Zlib', 'zlib-acknowledgement', 'ZPL-1.1', 'ZPL-2.0', 'ZPL-2.1'];
 const licencesLowerCase = ['', '0bsd', 'aal', 'abstyles', 'adobe-2006', 'adobe-glyph', 'adsl', 'afl-1.1', 'afl-1.2', 'afl-2.0', 'afl-2.1', 'afl-3.0', 'afmparse', 'agpl-1.0-only', 'agpl-1.0-or-later', 'agpl-3.0-only', 'agpl-3.0-or-later', 'aladdin', 'amdplpa', 'aml', 'ampas', 'antlr-pd', 'apache-1.0', 'apache-1.1', 'apache-2.0', 'apafml', 'apl-1.0', 'apsl-1.0', 'apsl-1.1', 'apsl-1.2', 'apsl-2.0', 'artistic-1.0', 'artistic-1.0-cl8', 'artistic-1.0-perl', 'artistic-2.0', 'bahyph', 'barr', 'beerware', 'bittorrent-1.0', 'bittorrent-1.1', 'blessing', 'blueoak-1.0.0', 'borceux', 'bsd-1-clause', 'bsd-2-clause', 'bsd-2-clause-freebsd', 'bsd-2-clause-netbsd', 'bsd-2-clause-patent', 'bsd-3-clause', 'bsd-3-clause-attribution', 'bsd-3-clause-clear', 'bsd-3-clause-lbnl', 'bsd-3-clause-no-nuclear-license', 'bsd-3-clause-no-nuclear-license-2014', 'bsd-3-clause-no-nuclear-warranty', 'bsd-3-clause-open-mpi', 'bsd-4-clause', 'bsd-4-clause-uc', 'bsd-protection', 'bsd-source-code', 'bsl-1.0', 'bzip2-1.0.5', 'bzip2-1.0.6', 'caldera', 'catosl-1.1', 'cc-by-1.0', 'cc-by-2.0', 'cc-by-2.5', 'cc-by-3.0', 'cc-by-4.0', 'cc-by-nc-1.0', 'cc-by-nc-2.0', 'cc-by-nc-2.5', 'cc-by-nc-3.0', 'cc-by-nc-4.0', 'cc-by-nc-nd-1.0', 'cc-by-nc-nd-2.0', 'cc-by-nc-nd-2.5', 'cc-by-nc-nd-3.0', 'cc-by-nc-nd-4.0', 'cc-by-nc-sa-1.0', 'cc-by-nc-sa-2.0', 'cc-by-nc-sa-2.5', 'cc-by-nc-sa-3.0', 'cc-by-nc-sa-4.0', 'cc-by-nd-1.0', 'cc-by-nd-2.0', 'cc-by-nd-2.5', 'cc-by-nd-3.0', 'cc-by-nd-4.0', 'cc-by-sa-1.0', 'cc-by-sa-2.0', 'cc-by-sa-2.5', 'cc-by-sa-3.0', 'cc-by-sa-4.0', 'cc-pddc', 'cc0-1.0', 'cddl-1.0', 'cddl-1.1', 'cdla-permissive-1.0', 'cdla-sharing-1.0', 'cecill-1.0', 'cecill-1.1', 'cecill-2.0', 'cecill-2.1', 'cecill-b', 'cecill-c', 'cern-ohl-1.1', 'cern-ohl-1.2', 'clartistic', 'cnri-jython', 'cnri-python', 'cnri-python-gpl-compatible', 'condor-1.1', 'copyleft-next-0.3.0', 'copyleft-next-0.3.1', 'cpal-1.0', 'cpl-1.0', 'cpol-1.02', 'crossword', 'crystalstacker', 'cua-opl-1.0', 'cube', 'curl', 'd-fsl-1.0', 'diffmark', 'doc', 'dotseqn', 'dsdp', 'dvipdfm', 'ecl-1.0', 'ecl-2.0', 'efl-1.0', 'efl-2.0', 'egenix', 'entessa', 'epl-1.0', 'epl-2.0', 'erlpl-1.1', 'etalab-2.0', 'eudatagrid', 'eupl-1.0', 'eupl-1.1', 'eupl-1.2', 'eurosym', 'fair', 'frameworx-1.0', 'freeimage', 'fsfap', 'fsful', 'fsfullr', 'ftl', 'gfdl-1.1-only', 'gfdl-1.1-or-later', 'gfdl-1.2-only', 'gfdl-1.2-or-later', 'gfdl-1.3-only', 'gfdl-1.3-or-later', 'giftware', 'gl2ps', 'glide', 'glulxe', 'gnuplot', 'gpl-1.0-only', 'gpl-1.0-or-later', 'gpl-2.0-only', 'gpl-2.0-or-later', 'gpl-3.0-only', 'gpl-3.0-or-later', 'gsoap-1.3b', 'haskellreport', 'hpnd', 'hpnd-sell-variant', 'ibm-pibs', 'icu', 'ijg', 'imagemagick', 'imatix', 'imlib2', 'info-zip', 'intel', 'intel-acpi', 'interbase-1.0', 'ipa', 'ipl-1.0', 'isc', 'jasper-2.0', 'jpnic', 'json', 'lal-1.2', 'lal-1.3', 'latex2e', 'leptonica', 'lgpl-2.0-only', 'lgpl-2.0-or-later', 'lgpl-2.1-only', 'lgpl-2.1-or-later', 'lgpl-3.0-only', 'lgpl-3.0-or-later', 'lgpllr', 'libpng', 'libpng-2.0', 'libtiff', 'liliq-p-1.1', 'liliq-r-1.1', 'liliq-rplus-1.1', 'linux-openib', 'lpl-1.0', 'lpl-1.02', 'lppl-1.0', 'lppl-1.1', 'lppl-1.2', 'lppl-1.3a', 'lppl-1.3c', 'makeindex', 'miros', 'mit', 'mit-0', 'mit-advertising', 'mit-cmu', 'mit-enna', 'mit-feh', 'mitnfa', 'motosoto', 'mpich2', 'mpl-1.0', 'mpl-1.1', 'mpl-2.0', 'mpl-2.0-no-copyleft-exception', 'ms-pl', 'ms-rl', 'mtll', 'mulanpsl-1.0', 'multics', 'mup', 'nasa-1.3', 'naumen', 'nbpl-1.0', 'ncsa', 'net-snmp', 'netcdf', 'newsletr', 'ngpl', 'nlod-1.0', 'nlpl', 'nokia', 'nosl', 'noweb', 'npl-1.0', 'npl-1.1', 'nposl-3.0', 'nrl', 'ntp', 'occt-pl', 'oclc-2.0', 'odbl-1.0', 'odc-by-1.0', 'ofl-1.0', 'ofl-1.1', 'ogl-canada-2.0', 'ogl-uk-1.0', 'ogl-uk-2.0', 'ogl-uk-3.0', 'ogtsl', 'oldap-1.1', 'oldap-1.2', 'oldap-1.3', 'oldap-1.4', 'oldap-2.0', 'oldap-2.0.1', 'oldap-2.1', 'oldap-2.2', 'oldap-2.2.1', 'oldap-2.2.2', 'oldap-2.3', 'oldap-2.4', 'oldap-2.5', 'oldap-2.6', 'oldap-2.7', 'oldap-2.8', 'oml', 'openssl', 'opl-1.0', 'oset-pl-2.1', 'osl-1.0', 'osl-1.1', 'osl-2.0', 'osl-2.1', 'osl-3.0', 'parity-6.0.0', 'pddl-1.0', 'php-3.0', 'php-3.01', 'plexus', 'postgresql', 'psfrag', 'psutils', 'python-2.0', 'qhull', 'qpl-1.0', 'rdisc', 'rhecos-1.1', 'rpl-1.1', 'rpl-1.5', 'rpsl-1.0', 'rsa-md', 'rscpl', 'ruby', 'sax-pd', 'saxpath', 'scea', 'sendmail', 'sendmail-8.23', 'sgi-b-1.0', 'sgi-b-1.1', 'sgi-b-2.0', 'shl-0.5', 'shl-0.51', 'simpl-2.0', 'sissl', 'sissl-1.2', 'sleepycat', 'smlnj', 'smppl', 'snia', 'spencer-86', 'spencer-94', 'spencer-99', 'spl-1.0', 'ssh-openssh', 'ssh-short', 'sspl-1.0', 'sugarcrm-1.1.3', 'swl', 'tapr-ohl-1.0', 'tcl', 'tcp-wrappers', 'tmate', 'torque-1.1', 'tosl', 'tu-berlin-1.0', 'tu-berlin-2.0', 'ucl-1.0', 'unicode-dfs-2015', 'unicode-dfs-2016', 'unicode-tou', 'unlicense', 'upl-1.0', 'vim', 'vostrom', 'vsl-1.0', 'w3c', 'w3c-19980720', 'w3c-20150513', 'watcom-1.0', 'wsuipa', 'wtfpl', 'x11', 'xerox', 'xfree86-1.1', 'xinetd', 'xnet', 'xpp', 'xskat', 'ypl-1.0', 'ypl-1.1', 'zed', 'zend-2.0', 'zimbra-1.3', 'zimbra-1.4', 'zlib', 'zlib-acknowledgement', 'zpl-1.1', 'zpl-2.0', 'zpl-2.1'];
-const defaultIgnores = ['bjspm/packages/**', 'node_modules/**', '.*.swp', '._*', '.DS_Store', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
+const defaultIgnores = ['bjspm/packages/**', 'node_modules/**', 'bjspm/packages/**/.*', 'node_modules/**/.*', '.*.swp', '._*', '.DS_Store', 'Thumbs.db', '.git', '.hg', '.npmrc', '.lock-wscript', '.svn', '.wafpickle-*', 'config.gypi', 'CVS', 'npm-debug.log'];
 const panickMsg = 'Something went wrong!';
-const credentialsMsg = 'Please enter your croncle.com account credentials to continue';
-const checksumHashFunction = 'sha256';
+const credentialsMsg = 'Please enter your Croncle.com account credentials to continue';
+const integrityHashFunction = 'sha256';
+const filesHashFunction = 'md5';
 const baseArgs = Symbol('cmdConfigBaseArgs');
 
-let ignores = defaultIgnores;
 let ignoreGlobs = [];
 let ignoresLoaded = false;
 let tmpToken = null;
@@ -83,9 +85,7 @@ let packageVersionsCache = {};
 let packageChecksumsCache = {};
 let packageTagsCache = {};
 
-for (let ignoreGlob of defaultIgnores) {
-	ignoreGlobs.push(new Minimatch(ignoreGlob));
-}
+tmp.setGracefulCleanup();
 
 mkdirSync(appDataPath);
 
@@ -129,8 +129,11 @@ function getDefaultAppConfig() {
 		packageCachePath: appDataPath + path.sep + 'packages' + path.sep,
 		maxCacheSize: null,
 		logZipping: false,
-		logUploadThreshold: 1024 * 1024 * 10,
-		registry: 'dev-bjspm.croncle.com'
+		logDownloadProgress: true,
+		logInstallVerbose: false,
+		logUploadThreshold: 10,
+		logUploadVerbose: false,
+		registry: 'bjspm.croncle.com'
 	};
 }
 
@@ -148,1827 +151,1953 @@ function getWebPackagesPath() {
 	return `https://${appConfig.registry}/packages/`;
 }
 
-loadAppConfig(() => {
-	loadPackage(() => {
-		loadAuthTokens(() => {
-			cleanAppConfig();
-			if (cmdArgs.length === 0) {
-				showQuickHelp();
-			} else if (cmdArgs.length === 2 && cmdConfig['usage']) {
-				showCommandHelp(cmdArgs[0]);
-			} else if (cmdArgs.length === 1 && cmdConfig['version']) {
-				die(version);
-			} else {
-				switch (cmdBaseArgs[0]) {
-					case 'create':
-					case 'innit':
-					case 'init': {
-						initPackage();
+loadAppConfig();
+for (let param in appConfig) {
+	if (cmdConfig[param] !== undefined && cmdConfig[param][0] !== undefined) {
+		try {
+			appConfig[param] = JSON.parse(cmdConfig[param][0]);
+		} catch (e) {
+			appConfig[param] = cmdConfig[param][0];
+		}
+	}
+}
+promptRequiredReading((_requiredReading) => {
+	loadPackage();
+	loadAuthTokens();
+	cleanAppConfig();
+
+	if (cmdArgs.length === 0) {
+		showQuickHelp();
+	} else if (cmdArgs.length === 2 && cmdConfig['usage']) {
+		showCommandHelp(cmdArgs[0]);
+	} else if (cmdArgs.length === 1 && cmdConfig['version']) {
+		die(version);
+	} else {
+		switch (cmdBaseArgs[0]) {
+			case 'create':
+			case 'innit':
+			case 'init': {
+				initPackage();
+			}
+				break;
+			case 'publish': {
+				let uploadType = 'unnamed';
+				let access = 'public';
+				let tags = [];
+				let save = true;
+
+				if (cmdBaseArgs.length === 1) {
+					if (!isValidPackage()) {
+						die('This package has an invalid configuration; run "bjspm init" to fix this.');
 					}
-						break;
-					case 'publish': {
-						let uploadType = 'unnamed';
-						let access = 'public';
-						let tags = [];
-						let save = true;
+					uploadType = getPackageType();
 
-						if (cmdBaseArgs.length === 1) {
-							if (!isValidPackage()) {
-								die('This package has an invalid configuration; run "bjspm init" to fix this.');
-							}
-							uploadType = getPackageType();
-
-							if (conf = cmdConfig['type']) {
-								let arg = conf[0];
-								if (arg !== undefined) {
-									switch (arg.toLowerCase()) {
-										case 'user':
-											if (package.username.length === 0) {
-												die('This package is not configured properly to be a user package; run "bjspm init" to fix this.');
-											}
-											uploadType = 'user';
-											break;
-										case 'named':
-											if (package.name.length === 0) {
-												die('This package is not configured properly to be a named package; run "bjspm init" to fix this.');
-											} else {
-												uploadType = 'named';
-											}
-											break;
-										case 'unnamed':
-											uploadType = 'unnamed';
-											break;
+					if (conf = cmdConfig['type']) {
+						let arg = conf[0];
+						if (arg !== undefined) {
+							switch (arg.toLowerCase()) {
+								case 'user':
+									if (package.username.length === 0) {
+										die('This package is not configured properly to be a user package; run "bjspm init" to fix this.');
 									}
-								}
-							}
-							if (conf = cmdConfig['tag']) {
-								if (uploadType === 'user') {
-									let tag = conf[0];
-									if (tag !== undefined) {
-										if (!isValidPackageTag(tag)) {
-											die('Invalid package tag');
-										}
-										tags = [tag];
-									}
-								}
-							}
-						} else {
-							if (conf = cmdConfig['type']) {
-								let arg = conf[0];
-
-								if (arg !== undefined) {
-									if (arg.toLowerCase() !== 'unnamed') {
-										die(`Only type unnamed is allowed when specifying files`);
-									}
-								}
-							}
-						}
-						if (conf = cmdConfig['access']) {
-							let arg = conf[0];
-							if (arg !== undefined) {
-								if (package.sid.length !== 0 && uploadType === 'user') {
-									let bsid = getPackageBsid();
-
-									if (bsid === package.username + '/' + package.name) {
-										die(`\nAccess levels cannot be set on individual packages. You may use the access command to change the access level for package tree "${bsid}"\n`);
-									}
-								}
-								switch (arg.toLowerCase()) {
-									case 'public':
-										access = 'public';
-										break;
-									case 'restricted':
-										access = 'restricted';
-										break;
-									default:
-										die('Invalid access level');
-										break;
-								}
-							}
-						}
-						if (conf = cmdConfig['no-save']) {
-							if (getConfigBool(conf[0])) {
-								save = false;
-							}
-						} else if (conf = cmdConfig['save']) {
-							save = getConfigBool(conf[0]);
-						}
-
-						{
-							// lowercase files
-							let lowerCaseFiles = ['bjspm/readme.md', 'bjspm/package.json', 'bjspm/preview.png', 'bjspm/preview.jpg', 'bjspm/preview.jpeg'];
-							for (let file of lowerCaseFiles) {
-								let baseName = getFileBaseName(`bjspm/${file}`);
-
-								if (baseName !== null && baseName !== file) {
-									die(`For cross-OS compatibility, the "${baseName}" filename must be all-lowercase`);
-								}
-							}
-
-							// lowercase directories
-							let lowerCaseDirectories = ['bjspm'];
-							for (let dir of lowerCaseDirectories) {
-								let baseName = getDirectoryBaseName(dir);
-
-								if (baseName !== null && baseName !== dir) {
-									die(`For cross-OS compatibility, the "${baseName}" directory name must be all-lowercase`);
-								}
-							}
-						}
-						getServerConfig(serverConfig => {
-							if (serverConfig.uploadDisabled) {
-								die('Package uploading has been disabled on the server');
-							}
-							let packagePatch = null;
-							let token = undefined;
-
-							let packageBackup, filePathsBackup;
-
-							let onZipped = result => {
-								let zipPath = result.zipPath;
-								let fileData = result.fileData;
-								let cleanupCallback = result.cleanupCallback;
-
-								let stats = fs.statSync(zipPath);
-								if (stats.size > serverConfig.maxPackageSize) {
-									log(`Package archive size exceeds maximum of ${filesize(serverConfig.maxPackageSize)}`);
-									// Manual cleanup
-									cleanupCallback();
-									process.exit();
-								}
-								let uploadCallback = (obj) => {
-									// Manual cleanup
-									cleanupCallback();
-
-									switch (obj.status) {
-										case API_STATUS.OK:
-											if (cmdBaseArgs.length === 1) {
-												package.sid = obj.packageId;
-
-												if (save) {
-													storePackage();
-												}
-											}
-											die('Package published, id: ' + obj.packageId);
-										case API_STATUS.ERR:
-											if(save){
-												if(packageBackup !== undefined){
-													storePackage(packageBackup);
-												}
-												if(filePathsBackup !== undefined){
-													let json = JSON.stringify(filePathsBackup, undefined, 2);
-													mksubdirSync(filePathsPath);
-													fs.writeFileSync(filePathsPath, json, 'utf8');
-												}
-											}
-											die('Server error: ' + obj.error);
-									}
-								};
-								uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback, undefined, packagePatch);
-							};
-							let zip = () => {
-								let _logZipping = appConfig.logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
-								if (cmdBaseArgs.length === 1) {
-									loadJsonFile(filePathsPath, (prevFilePaths) => {
-										loadIgnores(() => {
-											getDirectoryFilePaths(cwdPath, (filePaths) => {
-												if (save) {
-													let json = JSON.stringify(filePaths, undefined, 2);
-													mksubdirSync(filePathsPath);
-													fs.writeFileSync(filePathsPath, json, 'utf8');
-												}
-												packageBackup = { ...package };
-												if (prevFilePaths !== null) {
-													filePathsBackup = prevFilePaths;
-													
-													if (package.sid.length !== 0) {
-														let makePatch = () => {
-															increasePackageVersionIfSame();
-															log(`Making package patch${_logZipping ? '' : '...'}`);
-															let newFilePaths = [];
-															let filePathGroups = [];
-															let refFilePaths = [];
-
-															for (let hash in filePaths) {
-																filePathGroups.push(filePaths[hash]);
-
-																if (hash in prevFilePaths) {
-																	refFilePaths.push({
-																		isPrev: true,
-																		hash: hash
-																	});
-																} else {
-																	let filePath = filePaths[hash][0];
-
-																	newFilePaths.push(filePath);
-																	refFilePaths.push({
-																		isPrev: false,
-																		filePath: filePath
-																	});
-																}
-															}
-															packagePatch = {
-																filePathGroups: filePathGroups,
-																refFilePaths: refFilePaths,
-																prevPackage: package.sid
-															};
-															zipFiles(newFilePaths, onZipped, _logZipping);
-														};
-														getPackageAvailability(package.sid, (availability) => {
-															if (availability === 'deleted_permanently' || availability === 'nonexistent') {
-																if (availability === 'deleted_permanently') {
-																	let packageType = getPackageTypeFromSid(package.sid);
-
-																	if (packageType === 'user') {
-																		let baseId = getPackageBsidFromSid(package.sid);
-
-																		getPackageBaseAvailability(baseId, (_availability) => {
-																			if (_availability === 'deleted_permanently') {
-																				die('Cannot publish – package tree has been deleted permanently');
-																			} else {
-																				makePatch();
-																			}
-																		});
-																	} else {
-																		log(`Making package archive${_logZipping ? '' : '...'}`);
-																		zipPackage(onZipped, _logZipping);
-																	}
-																} else {
-																	increasePackageVersionIfSame();
-																	log(`Making package archive${_logZipping ? '' : '...'}`);
-																	zipPackage(onZipped, _logZipping);
-																}
-															} else {
-																makePatch();
-															}
-														});
-													} else {
-														log(`Making package archive${_logZipping ? '' : '...'}`);
-														zipPackage(onZipped, _logZipping);
-													}
-												} else {
-													log(`Making package archive${_logZipping ? '' : '...'}`);
-													increasePackageVersionIfSame();
-													zipPackage(onZipped, _logZipping);
-												}
-											}, true);
-										});
-									});
-								} else {
-									log(`Making package archive${_logZipping ? '' : '...'}`);
-
-									let subFilesOnly = (conf = cmdConfig['sub']) && getConfigBool(conf[0]);
-
-									zipFiles(cmdBaseArgs.slice(1), onZipped, _logZipping, subFilesOnly);
-								}
-							};
-							if (uploadType === 'user') {
-								let bsid = getUserPackageBsid();
-
-								getAuthTokenWithPackagePermissions(bsid, ['mayPublish'], (_token) => { // First, try without prompt, so user won't be prompted if this is the first time publishing the package
-									if (_token === null) {
-										let packageType = getPackageType();
-
-										if ((package.sid.length === 0 || packageType !== 'user') && authTokens[package.username] !== undefined) { // Assume first upload as user package & valid token
-											token = authTokens[package.username];
-											zip();
-										} else {
-											getAuthTokenWithPackagePermissions(bsid, ['mayPublish'], (_token) => { // Secondly, do prompt to really get a token
-												if (_token === null) {
-													if ((package.sid.length === 0 || packageType !== 'user') && authTokens[package.username] !== undefined) { // Assume first upload as user package & valid token
-														token = authTokens[package.username];
-														zip();
-													} else {
-														die('Not authorized');
-													}
-												} else {
-													token = _token;
-													zip();
-												}
-											}, false, true);
-										}
+									uploadType = 'user';
+									break;
+								case 'named':
+									if (package.name.length === 0) {
+										die('This package is not configured properly to be a named package; run "bjspm init" to fix this.');
 									} else {
-										token = _token;
-										zip();
+										uploadType = 'named';
 									}
-								});
-							} else if (serverConfig.loginRequired) {
-								let loginAuthToken = getLoginAuthToken();
+									break;
+								case 'unnamed':
+									uploadType = 'unnamed';
+									break;
+							}
+						}
+					}
+					if (conf = cmdConfig['tag']) {
+						if (uploadType === 'user') {
+							let tag = conf[0];
+							if (tag !== undefined) {
+								if (!isValidPackageTag(tag)) {
+									die('Invalid package tag');
+								}
+								tags = [tag];
+							}
+						}
+					}
+				} else {
+					if (conf = cmdConfig['type']) {
+						let arg = conf[0];
 
-								if (loginAuthToken !== null) {
-									token = loginAuthToken;
+						if (arg !== undefined) {
+							if (arg.toLowerCase() !== 'unnamed') {
+								die(`Only type unnamed is allowed when specifying files`);
+							}
+						}
+					}
+				}
+				if (conf = cmdConfig['access']) {
+					let arg = conf[0];
+					if (arg !== undefined) {
+						if (package.sid.length !== 0 && uploadType === 'user') {
+							let bsid = getPackageBsid();
+
+							if (bsid === package.username + '/' + package.name) {
+								die(`\nAccess levels cannot be set on individual packages. You may use the access command to change the access level for package tree "${bsid}"\n`);
+							}
+						}
+						switch (arg.toLowerCase()) {
+							case 'public':
+								access = 'public';
+								break;
+							case 'restricted':
+								access = 'restricted';
+								break;
+							default:
+								die('Invalid access level');
+								break;
+						}
+					}
+				}
+				if (conf = cmdConfig['no-save']) {
+					if (getConfigBool(conf[0])) {
+						save = false;
+					}
+				} else if (conf = cmdConfig['save']) {
+					save = getConfigBool(conf[0]);
+				}
+
+				{
+					// lowercase files
+					let lowerCaseFiles = ['bjspm/readme.md', 'bjspm/package.json', 'bjspm/preview.png', 'bjspm/preview.jpg', 'bjspm/preview.jpeg'];
+					for (let file of lowerCaseFiles) {
+						let baseName = path.basename(file);
+						let trueBaseName = getFileBaseName(file);
+
+						if (trueBaseName !== null && baseName !== trueBaseName) {
+							die(`For cross-OS compatibility, the "${baseName}" filename must be all-lowercase`);
+						}
+					}
+
+					// lowercase directories
+					let lowerCaseDirectories = ['bjspm'];
+					for (let dir of lowerCaseDirectories) {
+						let baseName = path.basename(dir);
+						let trueBaseName = getDirectoryBaseName(dir);
+
+						if (trueBaseName !== null && baseName !== trueBaseName) {
+							die(`For cross-OS compatibility, the "${baseName}" directory name must be all-lowercase`);
+						}
+					}
+				}
+				getServerConfig(serverConfig => {
+					if (serverConfig.uploadDisabled) {
+						die('Package uploading has been disabled on the server');
+					}
+					let packagePatch = null;
+					let token = undefined;
+
+					let packageBackup, filePathsBackup;
+
+					let onZipped = result => {
+						let zipPath = result.zipPath;
+						let fileData = result.fileData;
+
+						let stats = fs.statSync(zipPath);
+						if (stats.size > serverConfig.maxPackageSize) {
+							die(`Package archive size exceeds maximum of ${filesize(serverConfig.maxPackageSize, { standard: "iec" })}`);
+						}
+						if (uploadType !== 'user' && getLoginAuthToken() === null) {
+							if (stats.size > serverConfig.maxPackageSizeIP) {
+								log(`Package archive size exceeds maximum of ${filesize(serverConfig.maxPackageSizeIP, { standard: "iec" })}`);
+
+								if (serverConfig.maxPackageSizeIP !== serverConfig.maxPackageSize) {
+									log(`Sign into your Croncle.com account to have a maximum of ${filesize(serverConfig.maxPackageSize, { standard: "iec" })}`);
+								}
+								process.exit();
+							}
+						}
+						let uploadCallback = (obj) => {
+							switch (obj.status) {
+								case API_STATUS.OK:
+									if (cmdBaseArgs.length === 1) {
+										package.sid = obj.packageId;
+
+										if (save) {
+											storePackage();
+										}
+									}
+									die(`\nPackage published, id: ${obj.packageId}\n`);
+								case API_STATUS.ERR:
+									if (save) {
+										if (packageBackup !== undefined) {
+											storePackage(packageBackup);
+										}
+										if (filePathsBackup !== undefined) {
+											let json = JSON.stringify(filePathsBackup, undefined, 2);
+											mksubdirSync(filePathsPath);
+											fs.writeFileSync(filePathsPath, json, 'utf8');
+										}
+									}
+									die('Server error: ' + obj.error);
+							}
+						};
+						uploadPackage(zipPath, fileData, token, uploadType, access, tags, uploadCallback, packagePatch);
+					};
+					let zip = () => {
+						let _logZipping = appConfig.logZipping || ((conf = cmdConfig['verbose']) && getConfigBool(conf[0]));
+						if (cmdBaseArgs.length === 1) {
+							loadJsonFile(filePathsPath, (prevFilePaths) => {
+								loadIgnores(() => {
+									getDirectoryFilePaths(cwdPath, (filePaths) => {
+										if (save) {
+											let json = JSON.stringify(filePaths, undefined, 2);
+											mksubdirSync(filePathsPath);
+											fs.writeFileSync(filePathsPath, json, 'utf8');
+										}
+										packageBackup = { ...package };
+										if (prevFilePaths !== null) {
+											filePathsBackup = prevFilePaths;
+
+											let uploadPatch = package.sid.length !== 0;
+
+											if (uploadPatch && !serverConfig.allowStandalonePatch && access === 'restricted') {
+												uploadPatch = false;
+											}
+
+											switch (serverConfig.allowStandalonePatch) {
+												case 'all': {
+
+												}
+													break;
+												case 'user': {
+													if (uploadType !== 'user' && !isSignedIn()) {
+														uploadPatch = false;
+													}
+												}
+													break;
+												case 'none': {
+													uploadPatch = false;
+												}
+													break;
+											}
+
+											if (uploadPatch) {
+												let makePatch = () => {
+													increasePackageVersionIfSame();
+													log(`Making package patch${_logZipping ? '' : '...'}`);
+													let newFilePaths = [];
+													let filePathGroups = [];
+													let refFilePaths = [];
+
+													for (let hash in filePaths) {
+														let paths = filePaths[hash];
+
+														filePathGroups.push(paths);
+
+														if ((hash in prevFilePaths) && !(paths.length === 1 && paths[0] === 'bjspm/package.json')) { // always upload "bjspm/package.json", because it is most likely different from what's on the server
+															refFilePaths.push({
+																isPrev: true,
+																hash: hash
+															});
+														} else {
+															let filePath = paths[0];
+
+															newFilePaths.push(filePath);
+															refFilePaths.push({
+																isPrev: false,
+																filePath: filePath
+															});
+														}
+													}
+													packagePatch = {
+														filePathGroups: filePathGroups,
+														refFilePaths: refFilePaths,
+														prevPackage: package.sid
+													};
+													zipFiles(newFilePaths, onZipped, _logZipping);
+												};
+												getPackageAvailability(package.sid, (availability) => {
+													if (availability === 'deleted_permanently' || availability === 'nonexistent') {
+														if (availability === 'deleted_permanently') {
+															let packageType = getPackageTypeFromSid(package.sid);
+
+															if (packageType === 'user') {
+																let baseId = getPackageBsidFromSid(package.sid);
+
+																getPackageBaseAvailability(baseId, (_availability) => {
+																	if (_availability === 'deleted_permanently') {
+																		die('Cannot publish – package tree has been deleted permanently');
+																	} else {
+																		makePatch();
+																	}
+																});
+															} else {
+																log(`Making package archive${_logZipping ? '' : '...'}`);
+																zipPackage(onZipped, _logZipping);
+															}
+														} else {
+															increasePackageVersionIfSame();
+															log(`Making package archive${_logZipping ? '' : '...'}`);
+															zipPackage(onZipped, _logZipping);
+														}
+													} else {
+														makePatch();
+													}
+												});
+											} else {
+												log(`Making package archive${_logZipping ? '' : '...'}`);
+												zipPackage(onZipped, _logZipping);
+											}
+										} else {
+											log(`Making package archive${_logZipping ? '' : '...'}`);
+											increasePackageVersionIfSame();
+											zipPackage(onZipped, _logZipping);
+										}
+									}, true);
+								});
+							});
+						} else {
+							log(`Making package archive${_logZipping ? '' : '...'}`);
+
+							let subFilesOnly = (conf = cmdConfig['sub']) && getConfigBool(conf[0]);
+
+							zipFiles(cmdBaseArgs.slice(1), onZipped, _logZipping, subFilesOnly);
+						}
+					};
+					if (uploadType === 'user') {
+						let bsid = getUserPackageBsid();
+
+						getAuthTokenWithPackagePermissions(bsid, ['mayPublish'], (_token) => { // First, try without prompt, so user won't be prompted if this is the first time publishing the package
+							if (_token === null) {
+								if (bsid !== getPackageBsidFromSid(package.sid) && authTokens[package.username] !== undefined) { // Assume first upload as user package & valid token
+									token = authTokens[package.username];
 									zip();
 								} else {
-									log(credentialsMsg);
-									pollUsername((username) => {
-										getAuthToken(username, (authToken) => {
-											token = authToken;
+									getAuthTokenWithPackagePermissions(bsid, ['mayPublish'], (_token) => { // Secondly, do prompt to really get a token
+										if (_token === null) {
+											if (bsid !== getPackageBsidFromSid(package.sid) && authTokens[package.username] !== undefined) { // Assume first upload as user package & valid token
+												token = authTokens[package.username];
+												zip();
+											} else {
+												die('Not authorized');
+											}
+										} else {
+											token = _token;
 											zip();
-										});
-									});
+										}
+									}, false, true);
 								}
 							} else {
-								token = getLoginAuthToken();
+								token = _token;
 								zip();
 							}
 						});
-					}
-						break;
-					case 'unpublish': {
-						if (cmdBaseArgs.length > 2) {
-							showCommandHelp('unpublish');
-						}
-						let packageId = cmdBaseArgs[1];
-						if (packageId === undefined) {
-							if (package.sid.length === 0) {
-								die('No package specified');
-							}
-							packageId = package.sid;
-						} else {
-							if (!isValidSpecificPackageId(packageId) && !isValidPackageBaseId(packageId)) {
-								die('Invalid package identifier for unpublishing');
-							}
-						}
-						let unpublish = (authToken) => {
-							unpublishPackage(packageId, authToken, (result) => {
-								let packageType = getPackageTypeFromSid(packageId);
+					} else if (serverConfig.loginRequired || access === 'restricted') {
+						let loginAuthToken = getLoginAuthToken();
 
-								if (packageType === 'user' && isValidPackageBaseId(packageId)) {
-									log('Package tree unpublished successfully');
-								} else {
-									if (result.undid) {
-										log('Package unpublishing undone successfully');
-									} else {
-										log('Package unpublished successfully');
-									}
-								}
-								process.exit();
+						if (loginAuthToken !== null) {
+							token = loginAuthToken;
+							zip();
+						} else {
+							log(credentialsMsg);
+							pollUsername((username) => {
+								getAuthToken(username, (authToken) => {
+									token = authToken;
+									zip();
+								});
 							});
-						};
-						let proceed = () => {
-							getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
-								if (token === null) {
-									die('Not authorized');
-								} else {
-									unpublish(token);
-								}
-							}, false, true);
-						};
-						if (isValidPackageBaseId(packageId)) {
-							getPackageBaseAvailability(packageId, (availability) => {
+						}
+					} else {
+						token = getLoginAuthToken();
+						zip();
+					}
+				});
+			}
+				break;
+			case 'unpublish': {
+				if (cmdBaseArgs.length > 2) {
+					showCommandHelp('unpublish');
+				}
+				let packageId = cmdBaseArgs[1];
+				if (packageId === undefined) {
+					if (package.sid.length === 0) {
+						die('No package specified');
+					}
+					packageId = package.sid;
+				} else {
+					if (!isValidSpecificPackageId(packageId) && !isValidPackageBaseId(packageId)) {
+						die('Invalid package identifier for unpublishing');
+					}
+				}
+				let unpublish = (authToken) => {
+					unpublishPackage(packageId, authToken, (result) => {
+						let packageType = getPackageTypeFromSid(packageId);
+
+						if (packageType === 'user' && isValidPackageBaseId(packageId)) {
+							log('Package tree unpublished successfully');
+						} else {
+							if (result.undid) {
+								log('Package unpublishing undone successfully');
+							} else {
+								log('Package unpublished successfully');
+							}
+						}
+						process.exit();
+					});
+				};
+				let proceed = () => {
+					getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+						if (token === null) {
+							die('Not authorized');
+						} else {
+							unpublish(token);
+						}
+					}, false, true);
+				};
+				if (isValidPackageBaseId(packageId)) {
+					getPackageBaseAvailability(packageId, (availability) => {
+						switch (availability) {
+							case 'deleted_permanently':
+								die('Cannot unpublish – package tree deleted permanently');
+								break;
+							case 'deleted':
+								die('Package tree already unpublished; you can revive it by publishing a new package to it');
+								break;
+							case 'nonexistent':
+								die(`Package tree does not exist`);
+								break;
+							default:
+								proceed();
+						}
+					});
+				} else {
+					isRegisteredPackageSid(packageId, (exist) => {
+						if (!exist) {
+							die(`Package does not exist`);
+						}
+						let packageType = getPackageTypeFromSid(packageId);
+
+						if (packageType === 'user') {
+							let baseId = getPackageBsidFromSid(packageId);
+
+							getPackageBaseAvailability(baseId, (availability) => {
 								switch (availability) {
-									case 'deleted_permanently':
-										die('Cannot unpublish – package tree deleted permanently');
-										break;
 									case 'deleted':
-										die('Package tree already unpublished; you can revive it by publishing a new package to it');
+										die('Cannot unpublish – package tree has been unpublished');
 										break;
-									case 'nonexistent':
-										die(`Package tree does not exist`);
+									case 'deleted_permanently':
+										die('Cannot unpublish – package tree has been deleted permanently');
 										break;
 									default:
 										proceed();
 								}
 							});
 						} else {
-							isRegisteredPackageSid(packageId, (exist) => {
-								if (!exist) {
-									die(`Package does not exist`);
-								}
-								let packageType = getPackageTypeFromSid(packageId);
-
-								if (packageType === 'user') {
-									let baseId = getPackageBsidFromSid(packageId);
-
-									getPackageBaseAvailability(baseId, (availability) => {
-										switch (availability) {
-											case 'deleted':
-												die('Cannot unpublish – package tree has been unpublished');
-												break;
-											case 'deleted_permanently':
-												die('Cannot unpublish – package tree has been deleted permanently');
-												break;
-											default:
-												proceed();
-										}
-									});
-								} else {
-									proceed();
-								}
-							});
-						}
-					}
-						break;
-					case 'i':
-					case 'isntall':
-					case 'install':
-					case 'add':
-					case 'up':
-					case 'upgrade':
-					case 'udpate':
-					case 'update': {
-						let packageId = cmdBaseArgs[1];
-						let folder = null;
-						let dlType = 'org';
-						let installIds = [];
-						let force = false;
-						let update = ['up', 'upgrade', 'udpate', 'update'].indexOf(cmdBaseArgs[0]) !== -1;
-						let checkSIDs = false;
-
-						if (conf = cmdConfig['dir']) {
-							let arg = conf[0];
-							if (arg !== undefined) {
-								folder = arg;
-							} else {
-								showCommandHelp('install');
-							}
-						}
-						if (update) {
-							if (folder !== null) {
-								die(`Cannot update in a subdirectory`);
-							}
-							if (cmdBaseArgs.length === 1) {
-								installIds = package.dependencies;
-							} else {
-								for (let i = 1; i < cmdBaseArgs.length; i++) {
-									if (!isValidPackageUpdateId(cmdBaseArgs[i])) {
-										log(`Invalid package identifier for updating: "${cmdBaseArgs[i]}"`);
-										continue;
-									}
-									installIds.push(cmdBaseArgs[i]);
-								}
-								checkSIDs = true;
-
-								for (let dependency of package.dependencies) {
-									if (installIds.indexOf(dependency) !== -1) {
-										continue;
-									}
-									if (!isPackageInstalled(dependency, folder ? folder : undefined)) {
-										installIds.push(dependency);
-										log(`Missing dependency "${dependency}" will be installed as well`);
-									}
-								}
-							}
-						} else {
-							if (packageId === undefined) {
-								installIds = package.dependencies;
-							} else {
-								installIds.push(packageId);
-								checkSIDs = true;
-							}
-						}
-						for (let id of installIds) {
-							if (!isValidPackageSid(id)) {
-								if (installIds.length === 1) {
-									die(`Invalid package identifier`);
-								} else {
-									die(`Invalid package identifier: "${id}"`);
-								}
-							}
-							if (update && !isValidPackageUpdateId(id)) {
-								die(`Invalid package identifier for updating: "${id}"`);
-							}
-						}
-						if (installIds.length === 0) {
-							die(`Nothing to ${update ? 'update' : 'install'}`);
-						}
-						if (conf = cmdConfig['force']) {
-							force = getConfigBool(conf[0]);
-						}
-						let save = folder === null;
-						if (conf = cmdConfig['no-save']) {
-							if (getConfigBool(conf[0])) {
-								save = false;
-							}
-						} else if (conf = cmdConfig['save']) {
-							save = getConfigBool(conf[0]);
-						}
-						if (save && folder !== null) {
-							save = false;
-							log(`Packages installed in a custom directory cannot be added as a dependency`);
-						}
-						let i = -1;
-						let installedIds = [];
-						let uninstallable = 0;
-						let skippedInstalls = 0;
-						let word = update ? 'updated' : 'installed';
-						let previousDependencies;
-						let iterate = () => {
-							if (++i === installIds.length) {
-								let letter = installedIds.length > 1 ? 's' : '';
-
-								if (installedIds.length !== 0) {
-									if (folder === null) {
-										addPackageBaseModules(true);
-									}
-									if (uninstallable !== 0) {
-										log(`\nPackage${letter} partially ${word}, ${uninstallable} packages could not be ${word}.\n`);
-									} else {
-										log(`\nPackage${letter} ${word}.\n`);
-									}
-									getRawDependencies(package, (currentDependencies) => {
-										let uninstalledDependencies = previousDependencies.filter(d => currentDependencies.indexOf(d) === -1);
-										let i = 0;
-										let removeNext = () => {
-											let dependency = uninstalledDependencies[i++];
-
-											if (dependency === undefined) {
-												process.exit();
-												return;
-											}
-											let dir = getInstallDirFromInstallId(dependency, folder ? folder : undefined);
-
-											if (fs.existsSync(dir)) {
-												deleteDirectory(dir, (err) => {
-													if (err) {
-														log(`Could not remove files of uninstalled dependency "${dependency}"`);
-														removeNext();
-													} else {
-														log(`Removed files of uninstalled dependency "${dependency}"`);
-														removeNext();
-													}
-												});
-											} else {
-												removeNext();
-											}
-										};
-										removeNext();
-									});
-								} else {
-									die(`Nothing ${word}`);
-								}
-								return;
-							}
-							let installId = installIds[i];
-							let packageType = getPackageTypeFromSid(installId);
-							let noteVersion = false;
-							let packageVersion;
-
-							if (packageType === 'user') {
-								let matches = installId.match(regexInstallUser);
-								packageVersion = matches[3];
-
-								isValidPackageBaseId
-							}
-
-							if (save && packageType === 'user') {
-								let matches = installId.match(regexInstallUser);
-								let packageVersion = matches[3];
-
-								if (isValidPackageVersion(packageVersion) || isValidPackageTag(packageVersion)) {
-									noteVersion = true;
-								}
-							}
-
-							let install = () => {
-								packageType = getPackageTypeFromSid(installId);
-
-								installPackage(installId, folder, dlType, (result, err, installId) => {
-									if (result !== null) {
-										installedIds.push(installId);
-									} else {
-										if (!update) {
-											switch (err) {
-												case 'dir_exists': {
-													if (save && packageType !== 'user' && package.dependencies.indexOf(installId) === -1) {
-														package.dependencies.push(installId);
-														storePackage();
-
-														log(`Added "${installId}" to dependencies, seems to be installed already`);
-													} else {
-														log(`Not installing "${installId}" — target directory already exists`);
-													}
-												}
-													break;
-												case 'same_version': {
-													if (save && package.dependencies.indexOf(installId) === -1) {
-														package.dependencies.push(installId);
-														storePackage();
-
-														log(`Added "${installId}" to dependencies, is already installed`);
-													} else {
-														log(`Not installing "${installId}" — already installed`);
-													}
-												}
-												default:
-													uninstallable++;
-											}
-										}
-										skippedInstalls++;
-									}
-									iterate();
-								}, save, force, update, noteVersion);
-							};
-							if (checkSIDs && !isValidRangeOnly(packageVersion)) {
-								checkPackageAvailability(installId, (availability) => {
-									switch (availability) {
-										case 'public': {
-											resolvePackageSid(installId, (sid) => {
-												installId = sid;
-												if (installedIds.indexOf(installId) === -1) {
-													if (update && isPackageInstalled(installId, folder ? folder : undefined) === false) {
-														log(`Package not installed: "${installId}"`);
-														skippedInstalls++;
-														iterate();
-													}
-													install();
-												} else {
-													skippedInstalls++;
-													iterate();
-												}
-											});
-										}
-											break;
-										default:
-											install();
-									}
-								}, false);
-							} else {
-								if (installedIds.indexOf(installId) === -1) {
-									install();
-								} else {
-									skippedInstalls++;
-									iterate();
-								}
-							}
-						};
-						getRawDependencies(package, (dependencies) => {
-							previousDependencies = dependencies;
-							iterate();
-						});
-					}
-						break;
-					case 'u':
-					case 'un':
-					case 'unlink':
-					case 'remove':
-					case 'rm':
-					case 'r':
-					case 'uninstall': {
-						if (cmdBaseArgs.length > 2) {
-							showCommandHelp('uninstall');
-						}
-						let packageId = cmdBaseArgs[1];
-						let save = true;
-
-						if (cmdConfig['dir']) {
-							die('Cannot uninstall from a subdirectory');
-						}
-						if (conf = cmdConfig['save']) {
-							save = getConfigBool(conf[0]);
-						}
-						if (conf = cmdConfig['no-save']) {
-							save = !getConfigBool(conf[0]);
-						}
-						if (packageId === undefined) {
-							if (fs.existsSync(packagesPath)) {
-								deleteDirectory(packagesPath, (err) => {
-									if (err) {
-										die(`Could not uninstall package`);
-									} else {
-										if (save) {
-											package.dependencies.length = 0;
-											storePackage();
-										}
-										die(`Package uninstalled`);
-									}
-								});
-							} else {
-								log(`ERROR: Package not installed`);
-								if (save && package.dependencies.length !== 0) {
-									package.dependencies.length = 0;
-									storePackage();
-									log(`Cleared dependencies`);
-								}
-								process.exit();
-							}
-							break;
-						}
-						if (!isValidPackageUpdateId(packageId)) {
-							die(`Invalid package identifier for uninstalling`);
-						}
-						packageId = getMajorInstallId(packageId);
-						let packageType = getPackageTypeFromSid(packageId);
-
-						let proceed = () => {
-							let installDir = getInstallDirFromInstallId(packageId);
-							let dependencyIndex = package.dependencies.indexOf(packageId);
-
-							if (dependencyIndex === -1 || !fs.existsSync(installDir)) {
-								log(`ERROR: Package not installed`);
-
-								if (dependencyIndex !== -1) {
-									package.dependencies.splice(dependencyIndex, 1);
-									storePackage();
-									log(`Removed from dependencies`);
-								}
-								process.exit();
-							}
-							getDependencies(package, (dependencies) => {
-								let uninstall = (id, callback) => {
-									let dependency = dependencies[id];
-									if (dependency.refCount === 0) {
-										callback();
-										return;
-									}
-									if (--dependency.refCount === 0) {
-										deleteDirectory(dependency.dir, (err) => {
-											if (err) {
-												die(panickMsg, err);
-											}
-											if (dependency.package !== null) { // Possibly sub-dependencies to uninstall
-												let uninstallSubDependencies = () => {
-													if (dependency.package.dependencies.length === 0) { // No sub-dependencies
-														callback();
-														return;
-													}
-													let uninstalled = 0;
-													for (let _dependency of dependency.package.dependencies) {
-														uninstall(_dependency, () => {
-															if (++uninstalled === dependency.package.dependencies.length) { // All sub-dependencies have been uninstalled
-																callback();
-															}
-														});
-													}
-												};
-												if (dependency.type === 'user') {
-													/* Remove user directory if this was the last package of user */
-													let deleteDir = true;
-													for (let _dependency of dependencies) {
-														if (_dependency === dependency) {
-															continue;
-														}
-														if (_dependency.refCount !== 0 && _dependency.package !== null && _dependency.package.username === dependency.package.username) {
-															deleteDir = false;
-															break;
-														}
-													}
-													if (deleteDir) {
-														let dir = path.resolve(dependency.dir, '..');
-														deleteDirectory(dir, (err) => {
-															if (err) {
-																die(panickMsg, err);
-															}
-															// user directory deleted
-															uninstallSubDependencies();
-														});
-													} else { // user directory not deleted, it has other packages in it
-														uninstallSubDependencies();
-													}
-												} else { // Not a user package, so no parent directory to possibly delete
-													uninstallSubDependencies();
-												}
-											} else { // No package file, so no sub-dependencies to uninstall
-												callback();
-											}
-										});
-									} else {
-										callback();
-									}
-								};
-								uninstall(packageId, () => {
-									if (save) {
-										let index = package.dependencies.indexOf(packageId);
-										package.dependencies.splice(index, 1);
-										storePackage();
-									}
-									die(`Package uninstalled`);
-								});
-							});
-						};
-						if (packageType === 'unnamed') {
-							resolvePackageSid(packageId, (sid) => {
-								packageId = getMajorInstallId(sid);
-								proceed();
-							});
-						} else if (packageType === 'named') {
-							resolvePackageSid(packageId.split('_')[1], (sid) => {
-								packageId = getMajorInstallId(sid);
-								proceed();
-							});
-						} else {
 							proceed();
 						}
+					});
+				}
+			}
+				break;
+			case 'i':
+			case 'isntall':
+			case 'install':
+			case 'add':
+			case 'up':
+			case 'upgrade':
+			case 'udpate':
+			case 'update': {
+				let packageId = cmdBaseArgs[1];
+				let folder = null;
+				let dlType = 'org';
+				let installIds = [];
+				let force = false;
+				let update = ['up', 'upgrade', 'udpate', 'update'].indexOf(cmdBaseArgs[0]) !== -1;
+				let checkSIDs = false;
+
+				if (conf = cmdConfig['dir']) {
+					let arg = conf[0];
+					if (arg !== undefined) {
+						folder = arg;
+					} else {
+						showCommandHelp('install');
 					}
-						break;
-					case 'push': {
-						if (cmdBaseArgs.length > 2) {
-							showCommandHelp('dist-tag');
-						}
-						let target = cmdBaseArgs[1];
-						if (target === undefined) {
-							showCommandHelp('push');
-						}
-						if (package.sid.length === 0) {
-							die(`Cannot push to an unpublished package`);
-						}
-						let packageId = package.sid;
-						switch (target.toLowerCase()) {
-							case 'readme': {
-								let readmePath = path.resolve(bjspmPath, 'readme.md');
-								if (!existsAsFile(readmePath)) {
-									die(`No readme file in bjspm directory`);
-								}
-
-								let baseName = getFileBaseName('bjspm/readme.md');
-								if (baseName !== 'readme.md') {
-									die('For cross-OS compatibility, the readme filename must be all-lowercase');
-								}
-								getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
-									let finalize = () => {
-										updateFileChecksum('bjspm/readme.md', checksumHashFunction, () => {
-											die(`Readme updated`);
-										});
-									};
-									if (token === null) {
-										die('Not authorized');
-									} else {
-										uploadReadme(token, () => {
-											finalize();
-										});
-									}
-								}, false, true);
+				}
+				if (update) {
+					if (folder !== null) {
+						die(`Cannot update in a subdirectory`);
+					}
+					if (cmdBaseArgs.length === 1) {
+						installIds = package.dependencies;
+					} else {
+						for (let i = 1; i < cmdBaseArgs.length; i++) {
+							if (!isValidPackageUpdateId(cmdBaseArgs[i])) {
+								log(`Invalid package identifier for updating: "${cmdBaseArgs[i]}"`);
+								continue;
 							}
-								break;
-							case 'preview-image': {
-								let imgPath = null;
-								let imgName = null;
-								let imgNames = ['preview.png', 'preview.jpg', 'preview.jpeg'];
+							installIds.push(cmdBaseArgs[i]);
+						}
+						checkSIDs = true;
 
-								for (let name of imgNames) {
-									let _imgPath = path.resolve(bjspmPath, name);
-
-									if (existsAsFile(_imgPath)) {
-										imgPath = _imgPath;
-										imgName = name;
-										break;
-									}
-								}
-								if (imgPath === null) {
-									die(`No preview image in bjspm directory; must be "preview.png", "preview.jpg" or "preview.jpeg"`);
-								}
-								getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
-									let finalize = () => {
-										updateFileChecksum('bjspm/' + imgName, checksumHashFunction, () => {
-											die(`Preview image updated`);
-										});
-									};
-									if (token === null) {
-										die('Not authorized');
-									} else {
-										uploadPreviewImage(imgPath, token, () => {
-											finalize();
-										});
-									}
-								}, false, true);
+						for (let dependency of package.dependencies) {
+							if (installIds.indexOf(dependency) !== -1) {
+								continue;
 							}
-								break;
-							case 'description': {
-								let description = package.description;
-								let newDescription = cmdBaseArgs[2];
-
-								if (newDescription !== undefined) {
-									description = newDescription;
-								}
-								if (!isValidPackageDescription(description)) {
-									die('Invalid package description');
-								}
-								if (newDescription !== undefined) {
-									package.description = newDescription;
-									storePackage();
-								}
-								getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
-									let finalize = () => {
-										updateFileChecksum(packageJsonPath, checksumHashFunction, () => {
-											die(`Description updated`);
-										});
-									};
-									if (token === null) {
-										die('Not authorized');
-									} else {
-										uploadDescription(description, token, () => {
-											finalize();
-										});
-									}
-								}, false, true);
+							if (!isPackageInstalled(dependency, folder ? folder : undefined)) {
+								installIds.push(dependency);
+								log(`Missing dependency "${dependency}" will be installed as well`);
 							}
-								break;
-							default:
-								showCommandHelp('push');
 						}
 					}
-						break;
-					case 'dist-tags':
-					case 'dist-tag': {
-						let subCmd = cmdBaseArgs[1];
-						if (subCmd === undefined) {
-							showCommandHelp('dist-tag');
-						}
-						switch (subCmd) {
-							case 'add': {
-								if (cmdBaseArgs.length > 4) {
-									showCommandHelp('dist-tag');
-								}
-								let packageId = cmdBaseArgs[2];
-								let tag = cmdBaseArgs[3];
-
-								if (packageId === undefined) {
-									showCommandHelp('dist-tag');
-								}
-								if (tag === undefined) {
-									tag = packageId;
-									packageId = undefined;
-								}
-								if (packageId === undefined) {
-									if (package.sid.length === 0) {
-										die('No package specified');
-									}
-									if (getPackageTypeFromSid(package.sid) !== 'user') {
-										die('Only user packages may have tags');
-									}
-									packageId = package.sid;
-								} else if (!regexUserVersioned.test(packageId)) {
-									die('Invalid specific user package identifier');
-								}
-								if (!isValidPackageTag(tag)) {
-									die('Invalid package tag');
-								}
-								checkPackageAvailability(packageId, () => {
-									getAuthTokenWithPackagePermissions(packageId, ['maySetTags'], (token) => {
-										let addTag = (authToken) => {
-											setPackageTags(packageId, [tag], authToken, () => {
-												die('Tag set successfully');
-											});
-										};
-										if (token === null) {
-											die('Not authorized');
-										} else {
-											addTag(token);
-										}
-									}, false, true);
-								});
-							}
-								break;
-							case 'rm': {
-								if (cmdBaseArgs.length > 4) {
-									showCommandHelp('dist-tag');
-								}
-								let packageId = cmdBaseArgs[2];
-								let tag = cmdBaseArgs[3];
-
-								if (packageId === undefined) {
-									showCommandHelp('dist-tag');
-								}
-								if (tag === undefined) {
-									tag = packageId;
-									packageId = undefined;
-								}
-								if (packageId === undefined) {
-									if (package.sid.length === 0) {
-										die('No package specified');
-									}
-									if (getPackageTypeFromSid(package.sid) !== 'user') {
-										die('Only user packages may have tags');
-									}
-									packageId = package.sid;
-								} else if (!isValidPackageSid(packageId)) {
-									die('Invalid package identifier');
-								}
-								if (!isValidPackageTag(tag)) {
-									die('Invalid package tag');
-								}
-								if(tag === 'latest'){
-									die('Tag "latest" may not be deleted');
-								}
-								checkPackageAvailability(packageId, (availability) => {
-									getAuthTokenWithPackagePermissions(packageId, ['maySetTags'], (token) => {
-										let deleteTag = (authToken) => {
-											deletePackageTags(packageId, [tag], authToken, (result) => {
-												if (result.deleted !== 0) {
-													die('Tag deleted successfully');
-												} else {
-													die('Tag does not exist');
-												}
-											});
-										};
-										if (token === null) {
-											die('Not authorized');
-										} else {
-											deleteTag(token);
-										}
-									}, false, true);
-								});
-							}
-								break;
-							case 'list':
-							case 'ls': {
-								if (cmdBaseArgs.length > 3) {
-									showCommandHelp('dist-tag');
-								}
-								let packageId = cmdBaseArgs[2];
-								if (packageId === undefined) {
-									if (package.sid.length === 0 || getPackageTypeFromSid(package.sid) !== 'user') {
-										die('No package specified');
-									} else {
-										packageId = getUserPackageBsid();
-									}
-								}
-								if (!regexUserNoVersion.test(packageId)) {
-									die('Invalid base user package identifier');
-								}
-								checkPackageAvailability(packageId, (availability) => {
-									let listTags = (authToken) => {
-										getPackageTags(packageId, (tagsObj) => {
-											for (let majorVersion in tagsObj) {
-												let tags = tagsObj[majorVersion];
-
-												for (let tag in tags) {
-													log(`${tag}: ${tags[tag]}`);
-												}
-											}
-											process.exit();
-										}, authToken);
-									};
-									if (availability === 'public') {
-										listTags();
-									} else {
-										getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
-											if (token === null) {
-												die('Not authorized');
-											} else {
-												listTags(token);
-											}
-										}, false, true);
-									}
-								});
-							}
-								break;
-							default:
-								showCommandHelp('dist-tag');
-						}
+				} else {
+					if (packageId === undefined) {
+						installIds = package.dependencies;
+					} else {
+						installIds.push(packageId);
+						checkSIDs = true;
 					}
-						break;
-					case 'access': {
-						if (cmdBaseArgs.length === 1) {
-							showCommandHelp('access');
+				}
+				for (let id of installIds) {
+					if (!isValidPackageSid(id)) {
+						if (installIds.length === 1) {
+							die(`Invalid package identifier`);
 						} else {
-							switch (cmdBaseArgs[1].toLowerCase()) {
-								case 'public':
-								case 'restricted': {
-									let packageId;
+							die(`Invalid package identifier: "${id}"`);
+						}
+					}
+					if (update && !isValidPackageUpdateId(id)) {
+						die(`Invalid package identifier for updating: "${id}"`);
+					}
+				}
+				if (installIds.length === 0) {
+					die(`Nothing to ${update ? 'update' : 'install'}`);
+				}
+				if (conf = cmdConfig['force']) {
+					force = getConfigBool(conf[0]);
+				}
+				let save = folder === null;
+				if (conf = cmdConfig['no-save']) {
+					if (getConfigBool(conf[0])) {
+						save = false;
+					}
+				} else if (conf = cmdConfig['save']) {
+					save = getConfigBool(conf[0]);
+				}
+				if (save && folder !== null) {
+					save = false;
+					log(`Packages installed in a custom directory cannot be added as a dependency`);
+				}
+				let i = -1;
+				let installedIds = [];
+				let uninstallable = 0;
+				let skippedInstalls = 0;
+				let word = update ? 'updated' : 'installed';
+				let previousDependencies;
 
-									if (cmdBaseArgs.length > 3) {
-										showCommandHelp('access');
-										break;
-									}
-									if (cmdBaseArgs.length === 2) { // local package
-										if (package.sid.length === 0) {
-											die('No package specified');
-											break;
-										}
-										packageId = getPackageBsid();
-									} else if (cmdBaseArgs.length === 3) {
-										packageId = cmdBaseArgs[2];
-									} else {
-										showCommandHelp('access');
-										break;
-									}
-									if (!isValidPackageBaseId(packageId)) {
-										die('Invalid package base identifier');
-									}
-									let setPublicity = (authToken) => {
-										let packageType = getPackageTypeFromSid(packageId);
+				let iterate = () => {
+					if (++i === installIds.length) {
+						let letter = installedIds.length > 1 ? 's' : '';
 
-										setPackagePublicity(packageId, cmdBaseArgs[1], authToken, () => {
-											if (packageType === 'user') {
-												die('Package tree set to ' + cmdBaseArgs[1]);
+						if (installedIds.length !== 0) {
+							if (folder === null) {
+								addPackageBaseModules(true);
+							}
+							if (uninstallable !== 0) {
+								log(`\nPackage${letter} partially ${word}, ${uninstallable} packages could not be ${word}.\n`);
+							} else {
+								log(`\nPackage${letter} ${word}.\n`);
+							}
+							getRawDependencies(package, (currentDependencies) => {
+								let uninstalledDependencies = previousDependencies.filter(d => currentDependencies.indexOf(d) === -1);
+								let i = 0;
+								let removeNext = () => {
+									let dependency = uninstalledDependencies[i++];
+
+									if (dependency === undefined) {
+										process.exit();
+										return;
+									}
+									let dir = getInstallDirFromInstallId(dependency, folder ? folder : undefined);
+
+									if (fs.existsSync(dir)) {
+										deleteDirectory(dir, (err) => {
+											if (err) {
+												log(`Could not remove files of uninstalled dependency "${dependency}"`);
+												removeNext();
 											} else {
-												die('Package set to ' + cmdBaseArgs[1]);
+												log(`Removed files of uninstalled dependency "${dependency}"`);
+												removeNext();
 											}
 										});
+									} else {
+										removeNext();
 									}
-									checkPackageAvailability(packageId, (availability) => {
-										getAuthTokenWithPackagePermissions(packageId, ['maySetPublicity'], (token) => {
-											if (token === null) {
-												die('Not authorized');
+								};
+								removeNext();
+							});
+						} else {
+							die(`Nothing ${word}`);
+						}
+						return;
+					}
+					let installId = installIds[i];
+					let packageType = getPackageTypeFromSid(installId);
+					let noteVersion = false;
+					let packageVersion;
+
+					if (packageType === 'user') {
+						let matches = installId.match(regexInstallUser);
+						packageVersion = matches[3];
+					}
+
+					if (save && packageType === 'user') {
+						let matches = installId.match(regexInstallUser);
+						let packageVersion = matches[3];
+
+						if (isValidPackageVersion(packageVersion) || isValidPackageTag(packageVersion)) {
+							noteVersion = true;
+						}
+					}
+
+					let install = () => {
+						packageType = getPackageTypeFromSid(installId);
+
+						installPackage(installId, folder, dlType, (result, err, installBsid) => {
+							if (result !== null) {
+								installedIds.push(installId);
+							} else {
+								if (!update) {
+									switch (err) {
+										case 'dir_exists': {
+											if (save && packageType !== 'user' && package.dependencies.indexOf(installBsid) === -1) {
+												package.dependencies.push(installBsid);
+												storePackage();
+
+												log(`Added "${installBsid}" to dependencies – it seems to already be installed`);
 											} else {
-												setPublicity(token);
+												log(`Not installing "${installId}" — target directory already exists`);
 											}
-										}, false, true);
-									});
-								}
-									break;
-								case 'grant': {
-									if (cmdBaseArgs.length === 2 || cmdBaseArgs.length > 5) {
-										showCommandHelp('access');
-									} else {
-										switch (cmdBaseArgs[2]) {
-											case 'read-only':
-											case 'read-write': {
-												let user = cmdBaseArgs[3];
-												let packageId;
-
-												if (cmdBaseArgs.length === 4) { // local package
-													if (package.sid.length === 0) {
-														die('No package specified');
-														break;
-													}
-													packageId = getPackageBsid();
-												} else if (cmdBaseArgs.length === 5) {
-													packageId = cmdBaseArgs[4];
-												} else {
-													showCommandHelp('access');
-													break;
-												}
-												if (!isValidUsername(user)) {
-													die('Invalid username');
-												}
-												if (!isValidPackageBaseId(packageId)) {
-													die('Invalid package base identifier');
-												}
-												checkPackageAvailability(packageId, (availability) => {
-													let setPermissions = (authToken) => {
-														setUserPermissions(packageId, user, cmdBaseArgs[2], authToken, () => {
-															die('User permissions granted');
-														});
-													};
-													getAuthTokenWithPackagePermissions(packageId, ['maySetPermissions'], (token) => {
-														if (token === null) {
-															die('Not authorized');
-														} else {
-															setPermissions(token);
-														}
-													}, false, true);
-												});
-											}
-												break;
-											default:
-												showCommandHelp('access');
 										}
-									}
-								}
-									break;
-								case 'revoke': {
-									let user = cmdBaseArgs[2];
-									let packageId;
-
-									if (cmdBaseArgs.length > 4) {
-										showCommandHelp('access');
-										break;
-									}
-									if (cmdBaseArgs.length === 3) { // local package
-										if (package.sid.length === 0) {
-											die('No package specified');
 											break;
-										}
-										packageId = getPackageBsid();
-									} else if (cmdBaseArgs.length === 4) {
-										packageId = cmdBaseArgs[3];
-									} else {
-										showCommandHelp('access');
-										break;
-									}
-									if (!isValidUsername(user)) {
-										die('Invalid username');
-									}
-									if (!isValidPackageBaseId(packageId)) {
-										die('Invalid package base identifier');
-									}
-									checkPackageAvailability(packageId, () => {
-										let setPermissions = (authToken) => {
-											setUserPermissions(packageId, user, 'none', authToken, () => {
-												die('User permissions revoked');
-											});
-										};
-										getAuthTokenWithPackagePermissions(packageId, ['maySetPermissions'], (token) => {
-											if (token === null) {
-												die('Not authorized');
+										case 'same_version': {
+											if (save && package.dependencies.indexOf(installBsid) === -1) {
+												package.dependencies.push(installBsid);
+												storePackage();
+
+												log(`Added "${installBsid}" to dependencies, "${installId}" is already installed`);
 											} else {
-												setPermissions(token);
+												log(`Not installing "${installId}" — already installed`);
 											}
-										}, false, true);
-									});
-								}
-									break;
-								case 'ls-packages': {
-									let user = cmdBaseArgs[2];
-
-									if (cmdBaseArgs.length > 3) {
-										showCommandHelp('access');
-										break;
-									}
-									if (user === undefined) {
-										user = appConfig.username;
-
-										if (user === null) {
-											die('Not signed in');
 										}
+										default:
+											uninstallable++;
 									}
-									if (!isValidUsername(user)) {
-										die('Invalid username');
-									}
-									getPackageAccessListUser(user, (obj) => {
-										let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
-										die(json);
-									});
 								}
-									break;
-								case 'ls-collaborators': {
-									let user;
-									let packageId;
-
-									if (cmdBaseArgs.length > 4) {
-										showCommandHelp('access');
-										break;
-									}
-									if (cmdBaseArgs.length === 2) { // local package
-										if (package.sid.length === 0) {
-											die('No package specified');
-											break;
-										}
-										packageId = package.sid;
-									} else {
-										packageId = cmdBaseArgs[2];
-										user = cmdBaseArgs.length === 4 ? cmdBaseArgs[3] : '';
-									}
-									checkPackageAvailability(packageId, (availability) => {
-										if (availability === 'public') {
-											getPackageCollaborators(packageId, user, (obj) => {
-												let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
-												die(json);
-											});
+								skippedInstalls++;
+							}
+							iterate();
+						}, save, force, update, noteVersion);
+					};
+					if (checkSIDs && !isValidRangeOnly(packageVersion)) {
+						checkPackageAvailability(installId, (availability) => {
+							switch (availability) {
+								case 'public': {
+									resolvePackageSid(installId, (sid) => {
+										installId = sid;
+										if (installedIds.indexOf(installId) === -1) {
+											if (update && isPackageInstalled(installId, folder ? folder : undefined) === false) {
+												log(`Package not installed: "${installId}"`);
+												skippedInstalls++;
+												iterate();
+											}
+											install();
 										} else {
-											let listCollaborators = (authToken) => {
-												getPackageCollaborators(packageId, user, (obj) => {
-													let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
-													die(json);
-												}, authToken);
-											};
-											getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
-												if (token === null) {
-													die('Not authorized');
-												} else {
-													listCollaborators(token);
-												}
-											}, false, true);
+											skippedInstalls++;
+											iterate();
 										}
 									});
 								}
 									break;
 								default:
-									showCommandHelp('access');
+									install();
 							}
+						}, false);
+					} else {
+						if (installedIds.indexOf(installId) === -1) {
+							install();
+						} else {
+							skippedInstalls++;
+							iterate();
 						}
 					}
-						break;
-					case 'auth': {
-						if (cmdBaseArgs.length === 1) {
-							if (appConfig.username === null) {
-								log('Not signed in');
+				};
+				getRawDependencies(package, (dependencies) => {
+					previousDependencies = dependencies;
+					iterate();
+				});
+			}
+				break;
+			case 'u':
+			case 'un':
+			case 'unlink':
+			case 'remove':
+			case 'rm':
+			case 'r':
+			case 'uninstall': {
+				if (cmdBaseArgs.length > 2) {
+					showCommandHelp('uninstall');
+				}
+				let packageId = cmdBaseArgs[1];
+				let save = true;
+
+				if (cmdConfig['dir']) {
+					die('Cannot uninstall from a subdirectory');
+				}
+				if (conf = cmdConfig['save']) {
+					save = getConfigBool(conf[0]);
+				}
+				if (conf = cmdConfig['no-save']) {
+					save = !getConfigBool(conf[0]);
+				}
+				if (packageId === undefined) {
+					if (fs.existsSync(packagesPath)) {
+						deleteDirectory(packagesPath, (err) => {
+							if (err) {
+								die(`Could not uninstall package`);
 							} else {
-								log(`Signed in as "${appConfig.username}"`);
+								if (save) {
+									package.dependencies.length = 0;
+									storePackage();
+								}
+								die(`Package uninstalled`);
 							}
-							process.exit();
+						});
+					} else {
+						log(`ERROR: Package not installed`);
+						if (save && package.dependencies.length !== 0) {
+							package.dependencies.length = 0;
+							storePackage();
+							log(`Cleared dependencies`);
 						}
-						switch (cmdBaseArgs[1]) {
-							case 'save':
-							case 'store': {
-								if (cmdBaseArgs.length > 3) {
-									showCommandHelp('auth');
-								}
-								let username = cmdBaseArgs[2];
-								let proceed = () => {
-									getAuthToken(username, () => {
-										die(`Stored auth token of "${username}" in local app data`);
-									}, false);
-								};
-								if(username === undefined){
-									pollUsername((_username) => {
-										username = _username;
-										proceed();
-									});
-								} else {
-									if (!isValidUsername(username)) {
-										die(`Invalid username: ${username}`);
-									}
-									proceed();
-								}
-							}
-								break;
-							case 'forget': {
-								if (cmdBaseArgs.length > 3) {
-									showCommandHelp('auth');
-								}
-								let username = cmdBaseArgs[2];
-								let proceed = () => {
-									if (!(username in authTokens)) {
-										die('User auth token not found');
-									}
-									delete authTokens[username];
-									storeAuthTokens();
-									die(`Auth token of "${username}" deleted from local app data`);
-								};
-								if(username === undefined){
-									pollUsername((_username) => {
-										username = _username;
-										proceed();
-									});
-								} else {
-									if (!isValidUsername(username)) {
-										die(`Invalid username: ${username}`);
-									}
-									proceed();
-								}
-							}
-								break;
-							case 'sign-in':
-							case 'signin':
-							case 'login': {
-								if (cmdBaseArgs.length > 3) {
-									showCommandHelp('auth');
-								}
-								let username = cmdBaseArgs[2];
-								let proceed = () => {
-									let useAuthStore = true;
-									if (conf = cmdConfig['force']) {
-										useAuthStore = !getConfigBool(conf[0]);
-									}
-									getAuthToken(username, () => {
-										appConfig.username = username;
-										log(`Signed in as "${username}"`);
-										storeAppConfig();
-										process.exit();
-									}, useAuthStore);
-								};
-								if(username === undefined){
-									pollUsername((_username) => {
-										username = _username;
-										proceed();
-									});
-								} else {
-									if (!isValidUsername(username)) {
-										die(`Invalid username: ${username}`);
-									}
-									proceed();
-								}
-							}
-								break;
-							case 'sign-out':
-							case 'signout':
-							case 'logout': {
-								if (cmdBaseArgs.length > 2) {
-									showCommandHelp('auth');
-								}
-								if (appConfig.username === null) {
-									die(`Not signed in`);
-								}
-								let username = appConfig.username;
-								appConfig.username = null;
-								storeAppConfig();
-								die(`No longer signed in as "${username}"`);
-							}
-								break;
-							case 'list':
-							case 'ls': {
-								if (cmdBaseArgs.length > 2) {
-									showCommandHelp('auth');
-								}
-								for (let user in authTokens) {
-									log(user);
-								}
-								process.exit();
-							}
-								break;
-							default:
-								showCommandHelp('auth');
-						}
+						process.exit();
 					}
-						break;
-					case 'v':
-					case 'info':
-					case 'show':
-					case 'view': {
-						let packageId = cmdBaseArgs[1];
-						if (packageId === undefined) {
-							die(JSON.stringify(package, undefined, 2));
+					break;
+				}
+				if (!isValidPackageUpdateId(packageId)) {
+					die(`Invalid package identifier for uninstalling`);
+				}
+				packageId = getMajorInstallId(packageId);
+
+				let packageType = getPackageTypeFromSid(packageId);
+
+				let proceed = () => {
+					let installDir = getInstallDirFromInstallId(packageId);
+					let dependencyIndex = package.dependencies.indexOf(packageId);
+
+					if (dependencyIndex === -1 || !fs.existsSync(installDir)) {
+						log(`ERROR: Package not installed`);
+
+						if (dependencyIndex !== -1) {
+							package.dependencies.splice(dependencyIndex, 1);
+							storePackage();
+							log(`Removed from dependencies`);
 						}
-						if (!isValidPackageSid(packageId)) {
-							die('Invalid package identifier');
-						}
-						let logObj = (obj) => {
-							if (cmdBaseArgs[2] === undefined) {
-								log(JSON.stringify(obj, undefined, 2));
-							} else {
-								let logMap = {};
-								let skipped = 0;
-								for (let i = 2; i < cmdBaseArgs.length; i++) {
-									let arg = cmdBaseArgs[i];
-									if (arg in logMap) {
-										skipped++;
-										continue;
-									}
-									let split = arg.split('.');
-									if (split.length === 1) {
-										if (obj[arg] !== undefined) {
-											logMap[arg] = obj[arg];
-										}
-									} else if (split.length === 2) {
-										if (obj[split[0]] !== undefined && obj[split[0]][split[1]] !== undefined) {
-											logMap[arg] = obj[split[0]][split[1]];
-										}
-									}
-								}
-								let keys = Object.keys(logMap);
-								if (keys.length === 1 && cmdBaseArgs.length - skipped === 3) {
-									log(JSON.stringify(logMap[keys[0]]));
-								} else {
-									for (let key of keys) {
-										log(`${key} = ${JSON.stringify(logMap[key])}`);
-									}
-								}
+						process.exit();
+					}
+					getDependencies(package, (dependencies) => {
+						let uninstall = (id, callback) => {
+							let dependency = dependencies[id];
+							if (dependency.refCount === 0) {
+								callback();
+								return;
 							}
-						};
-						checkPackageAvailability(packageId, (availability) => {
-							let show = (authToken) => {
-								getBjspmPackageJson(packageId, (obj) => {
-									logObj(obj);
-									process.exit();
-								}, authToken, (err) => {
-									if (err.response && err.response.statusCode === 404) {
-										die('No information available about this package');
-									} else {
-										_onGotError(err);
+							if (--dependency.refCount === 0) {
+								deleteDirectory(dependency.dir, (err) => {
+									if (err) {
+										die(panickMsg, err);
+									}
+									if (dependency.package !== null) { // Possibly sub-dependencies to uninstall
+										let uninstallSubDependencies = () => {
+											if (dependency.package.dependencies.length === 0) { // No sub-dependencies
+												callback();
+												return;
+											}
+											let uninstalled = 0;
+											for (let _dependency of dependency.package.dependencies) {
+												uninstall(_dependency, () => {
+													if (++uninstalled === dependency.package.dependencies.length) { // All sub-dependencies have been uninstalled
+														callback();
+													}
+												});
+											}
+										};
+										if (dependency.type === 'user') {
+											/* Delete user directory if this was the last package of user */
+											let deleteDir = true;
+
+											for (let _dependency of dependencies) {
+												if (_dependency === dependency) {
+													continue;
+												}
+												if (_dependency.refCount !== 0 && _dependency.package !== null && _dependency.package.username === dependency.package.username) {
+													deleteDir = false;
+													break;
+												}
+											}
+											if (deleteDir) {
+												let dir = path.resolve(dependency.dir, '..');
+
+												deleteDirectory(dir, (err) => {
+													if (err) {
+														die(panickMsg, err);
+													}
+													// user directory deleted
+													uninstallSubDependencies();
+												});
+											} else { // user directory not deleted, it has other packages in it
+												uninstallSubDependencies();
+											}
+										} else { // Not a user package, so no parent directory to possibly delete
+											uninstallSubDependencies();
+										}
+									} else { // No package file, so no sub-dependencies to uninstall
+										if (dependency.type === 'user') {
+											/* Delete user directory */
+											let dir = path.resolve(dependency.dir, '..');
+
+											deleteDirectory(dir, (err) => {
+												if (err) {
+													die(panickMsg, err);
+												}
+												// user directory deleted
+												callback();
+											});
+										} else {
+											callback();
+										}
 									}
 								});
+							} else {
+								callback();
+							}
+						};
+						uninstall(packageId, () => {
+							if (save) {
+								let index = package.dependencies.indexOf(packageId);
+								package.dependencies.splice(index, 1);
+								storePackage();
+							}
+							if (isEmptyDirectory(packagesPath)) {
+								deleteDirectory(packagesPath, () => {
+									die(`Package uninstalled`);
+								});
+							} else {
+								die(`Package uninstalled`);
+							}
+						});
+					});
+				};
+				if (packageType === 'unnamed') {
+					resolvePackageSid(packageId, (sid) => {
+						let packageType = getPackageTypeFromSid(sid);
+
+						if (packageType === 'user') {
+							if (!isPackageInstalled(sid)) {
+								die(`ERROR: Package not installed`);
+							}
+							if (!isPackageInstalledForSure(sid)) {
+								die('Please provide the full ID of the package to uninstall it.');
+							}
+						}
+						packageId = getMajorInstallId(sid);
+						proceed();
+					});
+				} else if (packageType === 'named') {
+					resolvePackageSid(packageId.split('_')[1], (sid) => {
+						let packageType = getPackageTypeFromSid(sid);
+
+						if (packageType === 'user') {
+							if (!isPackageInstalled(sid)) {
+								die(`ERROR: Package not installed`);
+							}
+							if (!isPackageInstalledForSure(sid)) {
+								die('Please provide the full ID of the package to uninstall it.');
+							}
+						}
+						packageId = getMajorInstallId(sid);
+						proceed();
+					});
+				} else {
+					proceed();
+				}
+			}
+				break;
+			case 'push': {
+				let target = cmdBaseArgs[1];
+
+				if (target === undefined) {
+					showCommandHelp('push');
+				}
+				if (package.sid.length === 0) {
+					die(`Cannot push to an unpublished package`);
+				}
+				let packageId = package.sid;
+
+				switch (target.toLowerCase()) {
+					case 'readme': {
+						if (cmdBaseArgs.length > 2) {
+							showCommandHelp('push');
+						}
+						let readmePath = path.resolve(bjspmPath, 'readme.md');
+
+						if (!existsAsFile(readmePath)) {
+							die(`No readme file in bjspm directory`);
+						}
+
+						let baseName = getFileBaseName('bjspm/readme.md');
+
+						if (baseName !== 'readme.md') {
+							die('For cross-OS compatibility, the readme filename must be all-lowercase');
+						}
+						getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+							let finalize = () => {
+								updateFileChecksum('bjspm/readme.md', filesHashFunction, () => {
+									die(`Readme updated`);
+								});
+							};
+							if (token === null) {
+								die('Not authorized');
+							} else {
+								uploadReadme(token, () => {
+									finalize();
+								});
+							}
+						}, false, true);
+					}
+						break;
+					case 'preview-image': {
+						if (cmdBaseArgs.length > 2) {
+							showCommandHelp('push');
+						}
+						let imgPath = null;
+						let imgName = null;
+						let imgNames = ['preview.png', 'preview.jpg', 'preview.jpeg'];
+
+						for (let name of imgNames) {
+							let _imgPath = path.resolve(bjspmPath, name);
+
+							if (existsAsFile(_imgPath)) {
+								imgPath = _imgPath;
+								imgName = name;
+								break;
+							}
+						}
+						if (imgPath === null) {
+							die(`No preview image in bjspm directory; must be "preview.png", "preview.jpg" or "preview.jpeg"`);
+						}
+						getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+							let finalize = () => {
+								updateFileChecksum('bjspm/' + imgName, filesHashFunction, () => {
+									die(`Preview image updated`);
+								});
+							};
+							if (token === null) {
+								die('Not authorized');
+							} else {
+								uploadPreviewImage(imgPath, token, () => {
+									finalize();
+								});
+							}
+						}, false, true);
+					}
+						break;
+					case 'description': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('push');
+						}
+						let description = package.description;
+						let newDescription = cmdBaseArgs[2];
+
+						if (newDescription !== undefined) {
+							description = newDescription;
+						}
+						if (!isValidPackageDescription(description)) {
+							die('Invalid package description');
+						}
+						if (newDescription !== undefined) {
+							package.description = newDescription;
+							storePackage();
+						}
+						getAuthTokenWithPackagePermissions(packageId, ['mayPublish'], (token) => {
+							let finalize = () => {
+								updateFileChecksum(packageJsonPath, filesHashFunction, () => {
+									die(`Description updated`);
+								});
+							};
+							if (token === null) {
+								die('Not authorized');
+							} else {
+								uploadDescription(description, token, () => {
+									finalize();
+								});
+							}
+						}, false, true);
+					}
+						break;
+					default:
+						showCommandHelp('push');
+				}
+			}
+				break;
+			case 'dist-tags':
+			case 'dist-tag': {
+				let subCmd = cmdBaseArgs[1];
+				if (subCmd === undefined) {
+					showCommandHelp('dist-tag');
+				}
+				switch (subCmd) {
+					case 'add': {
+						if (cmdBaseArgs.length > 4) {
+							showCommandHelp('dist-tag');
+						}
+						let packageId = cmdBaseArgs[2];
+						let tag = cmdBaseArgs[3];
+
+						if (packageId === undefined) {
+							showCommandHelp('dist-tag');
+						}
+						if (tag === undefined) {
+							tag = packageId;
+							packageId = undefined;
+						}
+						if (packageId === undefined) {
+							if (package.sid.length === 0) {
+								die('No package specified');
+							}
+							if (getPackageTypeFromSid(package.sid) !== 'user') {
+								die('Only user packages may have tags');
+							}
+							packageId = package.sid;
+						} else if (!regexUserVersioned.test(packageId)) {
+							die('Invalid specific user package identifier');
+						}
+						if (!isValidPackageTag(tag)) {
+							die('Invalid package tag');
+						}
+						checkPackageAvailability(packageId, () => {
+							getAuthTokenWithPackagePermissions(packageId, ['maySetTags'], (token) => {
+								let addTag = (authToken) => {
+									setPackageTags(packageId, [tag], authToken, () => {
+										die('Tag set successfully');
+									});
+								};
+								if (token === null) {
+									die('Not authorized');
+								} else {
+									addTag(token);
+								}
+							}, false, true);
+						});
+					}
+						break;
+					case 'rm': {
+						if (cmdBaseArgs.length > 4) {
+							showCommandHelp('dist-tag');
+						}
+						let packageId = cmdBaseArgs[2];
+						let tag = cmdBaseArgs[3];
+
+						if (packageId === undefined) {
+							showCommandHelp('dist-tag');
+						}
+						if (tag === undefined) {
+							tag = packageId;
+							packageId = undefined;
+						}
+						if (packageId === undefined) {
+							if (package.sid.length === 0) {
+								die('No package specified');
+							}
+							if (getPackageTypeFromSid(package.sid) !== 'user') {
+								die('Only user packages may have tags');
+							}
+							packageId = package.sid;
+						} else if (!isValidPackageSid(packageId)) {
+							die('Invalid package identifier');
+						}
+						if (!isValidPackageTag(tag)) {
+							die('Invalid package tag');
+						}
+						if (tag === 'latest') {
+							die('Tag "latest" may not be deleted');
+						}
+						checkPackageAvailability(packageId, (availability) => {
+							getAuthTokenWithPackagePermissions(packageId, ['maySetTags'], (token) => {
+								let deleteTag = (authToken) => {
+									deletePackageTags(packageId, [tag], authToken, (result) => {
+										if (result.deleted !== 0) {
+											die('Tag deleted successfully');
+										} else {
+											die('Tag does not exist');
+										}
+									});
+								};
+								if (token === null) {
+									die('Not authorized');
+								} else {
+									deleteTag(token);
+								}
+							}, false, true);
+						});
+					}
+						break;
+					case 'list':
+					case 'ls': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('dist-tag');
+						}
+						let packageId = cmdBaseArgs[2];
+						if (packageId === undefined) {
+							if (package.sid.length === 0 || getPackageTypeFromSid(package.sid) !== 'user') {
+								die('No package specified');
+							} else {
+								packageId = getUserPackageBsid();
+							}
+						}
+						if (!regexUserNoVersion.test(packageId)) {
+							die('Invalid base user package identifier');
+						}
+						checkPackageAvailability(packageId, (availability) => {
+							let listTags = (authToken) => {
+								getPackageTags(packageId, (tagsObj) => {
+									for (let majorVersion in tagsObj) {
+										let tags = tagsObj[majorVersion];
+
+										for (let tag in tags) {
+											log(`${tag}: ${tags[tag]}`);
+										}
+									}
+									process.exit();
+								}, authToken);
 							};
 							if (availability === 'public') {
-								show();
+								listTags();
 							} else {
 								getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
 									if (token === null) {
 										die('Not authorized');
 									} else {
-										show(token);
+										listTags(token);
 									}
 								}, false, true);
 							}
 						});
 					}
 						break;
-					case 'cache': {
-						let files = fs.existsSync(appConfig.packageCachePath) ? fs.readdirSync(appConfig.packageCachePath).filter(file => file.endsWith('.zip')) : [];
-						let filePaths = [];
-						let totalSize = 0;
-						for (let file of files) {
-							let filePath = path.resolve(appConfig.packageCachePath, file);
-							let stat = fs.statSync(filePath);
-							totalSize += stat.size;
-							filePaths.push(filePath);
-						}
-						if (cmdBaseArgs.length === 1) {
-							die(`Cache: ${files.length} package${files.length === 1 ? '' : 's'}, ${filesize(totalSize)}`);
-						} else {
-							switch (cmdBaseArgs[1]) {
-								case 'clean':
-								case 'clear': {
-									if (cmdBaseArgs.length > 2) {
-										showCommandHelp('cache');
-									}
-									for (let filePath of filePaths) {
-										try {
-											fs.unlinkSync(filePath);
-										} catch (e) {
-											die(panickMsg, e);
-										}
-									}
-									log(`Cache cleared (${files.length} files, ${filesize(totalSize)})`);
-								}
-									break;
-								case 'dir': {
-									if (cmdBaseArgs.length > 3) {
-										showCommandHelp('cache');
-									}
-									let dir = cmdBaseArgs[2];
-									if (dir !== undefined) {
-										if (dir === 'default') {
-											dir = getDefaultAppConfig().packageCachePath;
-										}
-										if (!path.isAbsolute(dir)) {
-											die('Only absolute paths are allowed');
-										}
-										if (existsAsFile(dir)) {
-											die('Path resolves to a file, must be a directory');
-										}
-										appConfig.packageCachePath = dir;
-										storeAppConfig();
-										die(resolvePathNative(dir));
-									} else {
-										die(appConfig.packageCachePath);
-									}
-								}
-									break;
-								case 'max-size': {
-									if (cmdBaseArgs.length > 3) {
-										showCommandHelp('cache');
-									}
-									let size = cmdBaseArgs[2];
-									if (size === undefined) {
-										if (appConfig.maxCacheSize === null) {
-											log('Cache size limit: none');
-										} else {
-											log(`Cache size limit: ${filesize(appConfig.maxCacheSize)}`);
-										}
-									} else if (/^\d+$/.test(size)) {
-										appConfig.maxCacheSize = parseInt(size);
+					default:
+						showCommandHelp('dist-tag');
+				}
+			}
+				break;
+			case 'access': {
+				if (cmdBaseArgs.length === 1) {
+					showCommandHelp('access');
+				} else {
+					let arg1 = cmdBaseArgs[1].toLowerCase();
+					switch (arg1) {
+						case 'public': {
+							let packageId;
 
-										if (isFinite(appConfig.maxCacheSize)) {
-											appConfig.maxCacheSize *= 1048576;
-										}
-										if (!isFinite(appConfig.maxCacheSize)) {
-											appConfig.maxCacheSize = null;
-										}
-										storeAppConfig();
-										log('New max cache size set');
-									} else if (size === 'none') {
-										appConfig.maxCacheSize = null;
-										storeAppConfig();
-										log('Cache size limit annulled');
+							if (cmdBaseArgs.length > 3) {
+								showCommandHelp('access');
+								break;
+							}
+							if (cmdBaseArgs.length === 2) { // local package
+								if (package.sid.length === 0) {
+									die('No package specified');
+									break;
+								}
+								packageId = getPackageBsid();
+							} else if (cmdBaseArgs.length === 3) {
+								packageId = cmdBaseArgs[2];
+							} else {
+								showCommandHelp('access');
+								break;
+							}
+							if (!isValidPackageBaseId(packageId)) {
+								die('Invalid package base identifier');
+							}
+							let setPublicity = (authToken) => {
+								let packageType = getPackageTypeFromSid(packageId);
+
+								setPackagePublicity(packageId, arg1, authToken, () => {
+									if (packageType === 'user') {
+										die('Package tree set to ' + arg1);
 									} else {
-										log('Invalid new max cache size');
+										die('Package set to ' + arg1);
 									}
+								});
+							}
+							checkPackageAvailability(packageId, (availability) => {
+								if (availability === 'public') {
+									die('Package already public');
+								}
+								getAuthTokenWithPackagePermissions(packageId, ['maySetPublicity'], (token) => {
+									if (token === null) {
+										die('Not authorized');
+									} else {
+										setPublicity(token);
+									}
+								}, false, true);
+							});
+						}
+							break;
+						case 'grant': {
+							if (cmdBaseArgs.length === 2 || cmdBaseArgs.length > 5) {
+								showCommandHelp('access');
+							} else {
+								switch (cmdBaseArgs[2]) {
+									case 'read-only':
+									case 'read-write': {
+										let user = cmdBaseArgs[3];
+										let packageId;
+
+										if (cmdBaseArgs.length === 4) { // local package
+											if (package.sid.length === 0) {
+												die('No package specified');
+												break;
+											}
+											packageId = getPackageBsid();
+										} else if (cmdBaseArgs.length === 5) {
+											packageId = cmdBaseArgs[4];
+										} else {
+											showCommandHelp('access');
+											break;
+										}
+										if (!isValidUsername(user)) {
+											die('Invalid username');
+										}
+										if (!isValidPackageBaseId(packageId)) {
+											die('Invalid package base identifier');
+										}
+										checkPackageAvailability(packageId, (availability) => {
+											let setPermissions = (authToken) => {
+												setUserPermissions(packageId, user, cmdBaseArgs[2], authToken, () => {
+													die('User permissions granted');
+												});
+											};
+											getAuthTokenWithPackagePermissions(packageId, ['maySetPermissions'], (token) => {
+												if (token === null) {
+													die('Not authorized');
+												} else {
+													setPermissions(token);
+												}
+											}, false, true);
+										});
+									}
+										break;
+									default:
+										showCommandHelp('access');
 								}
 							}
-							process.exit();
+						}
+							break;
+						case 'revoke': {
+							let user = cmdBaseArgs[2];
+							let packageId;
+
+							if (cmdBaseArgs.length > 4) {
+								showCommandHelp('access');
+								break;
+							}
+							if (cmdBaseArgs.length === 3) { // local package
+								if (package.sid.length === 0) {
+									die('No package specified');
+									break;
+								}
+								packageId = getPackageBsid();
+							} else if (cmdBaseArgs.length === 4) {
+								packageId = cmdBaseArgs[3];
+							} else {
+								showCommandHelp('access');
+								break;
+							}
+							if (!isValidUsername(user)) {
+								die('Invalid username');
+							}
+							if (!isValidPackageBaseId(packageId)) {
+								die('Invalid package base identifier');
+							}
+							checkPackageAvailability(packageId, () => {
+								let setPermissions = (authToken) => {
+									setUserPermissions(packageId, user, 'none', authToken, () => {
+										die('User permissions revoked');
+									});
+								};
+								getAuthTokenWithPackagePermissions(packageId, ['maySetPermissions'], (token) => {
+									if (token === null) {
+										die('Not authorized');
+									} else {
+										setPermissions(token);
+									}
+								}, false, true);
+							});
+						}
+							break;
+						case 'ls-packages': {
+							let user = cmdBaseArgs[2];
+
+							if (cmdBaseArgs.length > 3) {
+								showCommandHelp('access');
+								break;
+							}
+							if (user === undefined) {
+								user = appConfig.username;
+
+								if (user === null) {
+									die('Not signed in');
+								}
+							}
+							if (!isValidUsername(user)) {
+								die('Invalid username');
+							}
+							getPackageAccessListUser(user, (obj) => {
+								let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
+								die(json);
+							});
+						}
+							break;
+						case 'ls-collaborators': {
+							let user;
+							let packageId;
+
+							if (cmdBaseArgs.length > 4) {
+								showCommandHelp('access');
+								break;
+							}
+							if (cmdBaseArgs.length === 2) { // local package
+								if (package.sid.length === 0) {
+									die('No package specified');
+									break;
+								}
+								packageId = package.sid;
+							} else {
+								packageId = cmdBaseArgs[2];
+								user = cmdBaseArgs.length === 4 ? cmdBaseArgs[3] : '';
+							}
+							if (user.length !== 0 && !isValidUsername(user)) {
+								die('Invalid username');
+							}
+							if (!isValidLoosePackageId(packageId)) {
+								die('Invalid package identifier');
+							}
+							checkPackageAvailability(packageId, (availability) => {
+								if (availability === 'public') {
+									getPackageCollaborators(packageId, user, (obj) => {
+										let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
+
+										die(json);
+									});
+								} else {
+									let listCollaborators = (authToken) => {
+										getPackageCollaborators(packageId, user, (obj) => {
+											let json = JSON.stringify(Array.isArray(obj) ? {} : obj, undefined, 2);
+
+											die(json);
+										}, authToken);
+									};
+									getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
+										if (token === null) {
+											die('Not authorized');
+										} else {
+											listCollaborators(token);
+										}
+									}, false, true);
+								}
+							});
+						}
+							break;
+						default:
+							showCommandHelp('access');
+					}
+				}
+			}
+				break;
+			case 'auth': {
+				if (cmdBaseArgs.length === 1) {
+					if (appConfig.username === null) {
+						log('Not signed in');
+					} else {
+						log(`Signed in as "${appConfig.username}"`);
+					}
+					process.exit();
+				}
+				switch (cmdBaseArgs[1]) {
+					case 'save':
+					case 'store': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('auth');
+						}
+						let username = cmdBaseArgs[2];
+						let proceed = () => {
+							getAuthToken(username, () => {
+								die(`Stored auth token of "${username}" in local app data`);
+							}, false);
+						};
+						if (username === undefined) {
+							pollUsername((_username) => {
+								username = _username;
+								proceed();
+							});
+						} else {
+							if (!isValidUsername(username)) {
+								die(`Invalid username: ${username}`);
+							}
+							proceed();
 						}
 					}
 						break;
-					case 'version':
-						let varg = cmdBaseArgs[1];
-
-						if (varg === undefined) {
-							let packageType = getPackageType(package, true);
-
-							if (packageType === 'user') {
-								die(`BJSPM v${version}, ${getUserPackageSid()}`);
-							} else {
-								die(`BJSPM v${version}`);
-							}
+					case 'forget': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('auth');
 						}
-						if (!existsAsFile(packageJsonPath)) {
-							die('No package file; please run "bjspm init" first');
-						}
-						if (semverValid(varg) !== null) {
-							if (package.version.length !== 0 && !semverGt(varg, package.version)) {
-								die(`New version must be greater than current version (${package.version})`);
+						let username = cmdBaseArgs[2];
+						let proceed = () => {
+							if (!(username in authTokens)) {
+								die('User auth token not found');
 							}
-							package.version = varg;
-							storePackage();
-							die(`v${package.version}`);
+							delete authTokens[username];
+							storeAuthTokens();
+							die(`Auth token of "${username}" deleted from local app data`);
+						};
+						if (username === undefined) {
+							pollUsername((_username) => {
+								username = _username;
+								proceed();
+							});
 						} else {
-							let preid = undefined;
-							if (conf === cmdConfig['preid']) {
-								preid = conf[0];
+							if (!isValidUsername(username)) {
+								die(`Invalid username: ${username}`);
 							}
-							let arr = ['major', 'minor', 'patch', 'premajor', 'preminor', 'prepatch', 'prerelease'];
-							if (arr.indexOf(varg) === -1) {
-								showCommandHelp('version');
-							}
-							let newVersion = semverInc(package.version, varg, preid);
-							if (newVersion !== null) {
-								package.version = newVersion;
-								storePackage();
-								die(`v${package.version}`);
-							} else {
-								die(panickMsg);
-							}
+							proceed();
 						}
+					}
+						break;
+					case 'sign-in':
+					case 'signin':
+					case 'login': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('auth');
+						}
+						let username = cmdBaseArgs[2];
+						let proceed = () => {
+							let useAuthStore = true;
+							if (conf = cmdConfig['force']) {
+								useAuthStore = !getConfigBool(conf[0]);
+							}
+							getAuthToken(username, () => {
+								appConfig.username = username;
+								log(`Signed in as "${username}"`);
+								storeAppConfig();
+								process.exit();
+							}, useAuthStore);
+						};
+						if (username === undefined) {
+							pollUsername((_username) => {
+								username = _username;
+								proceed();
+							});
+						} else {
+							if (!isValidUsername(username)) {
+								die(`Invalid username: ${username}`);
+							}
+							proceed();
+						}
+					}
+						break;
+					case 'sign-out':
+					case 'signout':
+					case 'logout': {
+						if (cmdBaseArgs.length > 2) {
+							showCommandHelp('auth');
+						}
+						if (appConfig.username === null) {
+							die(`Not signed in`);
+						}
+						let username = appConfig.username;
+						appConfig.username = null;
+						storeAppConfig();
+						die(`No longer signed in as "${username}"`);
+					}
 						break;
 					case 'list':
-					case 'll':
-					case 'la':
-					case 'ls':
-						if (cmdBaseArgs.length > 1) {
-							showCommandHelp('ls');
+					case 'ls': {
+						if (cmdBaseArgs.length > 2) {
+							showCommandHelp('auth');
 						}
-						let json = false;
-						if (conf = cmdConfig['json']) {
-							json = getConfigBool(conf[0]);
+						for (let user in authTokens) {
+							log(user);
 						}
-						if (!json) {
-							if (package.sid.length !== 0) {
-								log(package.sid, process.cwd());
-							} else {
-								let packageType = getPackageType(package, true);
-
-								if (packageType === 'user') {
-									log(getUserPackageSid(), process.cwd());
-								} else {
-									log(process.cwd());
-								}
-							}
-						}
-						if (package.dependencies.length === 0) {
-							if (!json) {
-								die('`-- (empty)\n');
-							} else {
-								die(JSON.stringify(package, undefined, 2) + '\n');
-							}
-						}
-						let maxDepth = Infinity;
-						if (conf = cmdConfig['depth']) {
-							if (conf[0] === undefined) {
-								maxDepth = 1;
-							} else {
-								maxDepth = parseInt(conf[0]);
-
-								if (isNaN(maxDepth) || maxDepth < 0) {
-									maxDepth = Infinity;
-								}
-							}
-						}
-						if (json) {
-							let addDependencies = (package, depth, branch, dependenciesCache, callback) => {
-								if (depth > maxDepth) {
-									callback();
-									return;
-								}
-								let addToBranch = (dependencies) => {
-									for (let i = 0; i < dependencies.length; i++) {
-										let dependency = dependencies[i];
-										let obj = {
-											type: dependency.type,
-											dependencies: {}
-										};
-										if (dependency.type === 'user' && dependency.package !== null) {
-											obj.version = dependency.package.version;
-										}
-										branch[dependency.id] = obj;
-
-										if (dependency.package !== null) {
-											addDependencies(dependency.package, depth + 1, obj.dependencies, dependenciesCache, callback);
-										} else {
-											if (i === dependencies.length - 1) {
-												callback();
-											}
-										}
-									}
-								};
-								if (dependenciesCache[package.sid] !== undefined) {
-									addToBranch(dependenciesCache[package.sid], callback);
-								} else {
-									getDependencies(package, (dependencies) => {
-										dependenciesCache[package.sid] = dependencies;
-										addToBranch(dependencies, callback);
-									}, false);
-								}
-							}
-							let obj = {};
-							addDependencies(package, 0, obj, {}, () => {
-								die(JSON.stringify({ dependencies: obj }, undefined, 2) + '\n');
-							});
-						} else {
-							let listDependencies = (package, depth, dependenciesCache, callback) => {
-								if (depth > maxDepth) {
-									callback();
-									return;
-								}
-								let listPackages = (dependencies, callback) => {
-									for (let i = 0; i < dependencies.length; i++) {
-										let dependency = dependencies[i];
-										let prefix = '';
-										for (let j = 0; j < depth; j++) {
-											prefix += '| ';
-										}
-										if (dependency.package !== null) {
-											if (!(i === 0 && depth === 0) && i === dependencies.length - 1) {
-												log(`${prefix}\`-- ${dependency.package.sid}`);
-											} else {
-												log(`${prefix}+-- ${dependency.package.sid}`);
-											}
-											listDependencies(dependency.package, depth + 1, dependenciesCache, callback);
-										} else {
-											if (i === dependencies.length - 1) {
-												log(`${prefix}\`-- ${dependency.id}`);
-												callback();
-											} else {
-												log(`${prefix}+-- ${dependency.id}`);
-											}
-										}
-									}
-								};
-								if (dependenciesCache[package.sid] !== undefined) {
-									listPackages(dependenciesCache[package.sid], callback);
-								} else {
-									getDependencies(package, (dependencies) => {
-										dependenciesCache[package.sid] = dependencies;
-										listPackages(dependencies, callback);
-									}, false);
-								}
-							}
-							listDependencies(package, 0, {}, () => {
-								die();
-							});
-						}
-						break;
-					case 'c':
-					case 'config': {
-						let listConfigParams = () => {
-							die(JSON.stringify(appConfig, undefined, 2));
-						};
-						switch (cmdBaseArgs[1]) {
-							case 'get': {
-								if (cmdBaseArgs.length > 3) {
-									showCommandHelp('config');
-								}
-								let param = cmdBaseArgs[2];
-
-								if (param === undefined) {
-									listConfigParams();
-								}
-								die(appConfig[param]);
-							}
-								break;
-							case 'set': {
-								if (cmdBaseArgs.length > 4) {
-									showCommandHelp('config');
-								}
-								let param = cmdBaseArgs[2];
-								let value = cmdBaseArgs[3];
-
-								if (param === undefined || value === undefined) {
-									showCommandHelp('config');
-								}
-								try {
-									appConfig[param] = JSON.parse(value);
-								} catch (e) {
-									appConfig[param] = value;
-								}
-								storeAppConfig();
-								process.exit();
-							}
-								break;
-							case 'delete': {
-								if (cmdBaseArgs.length > 3) {
-									showCommandHelp('config');
-								}
-								let param = cmdBaseArgs[2];
-
-								if (!(param in appConfig)) {
-									die(`Parameter not set`);
-								}
-								delete appConfig[param];
-								storeAppConfig();
-								process.exit();
-							}
-								break;
-							case 'ls':
-							case 'list': {
-								if (cmdBaseArgs.length > 2) {
-									showCommandHelp('config');
-								}
-								listConfigParams();
-							}
-								break;
-							default:
-								showCommandHelp('config');
-						}
+						process.exit();
 					}
 						break;
-					case 'api': {
-						if (cmdArgs[1] === undefined) {
-							break;
+					default:
+						showCommandHelp('auth');
+				}
+			}
+				break;
+			case 'v':
+			case 'info':
+			case 'show':
+			case 'view': {
+				let packageId = cmdBaseArgs[1];
+				if (packageId === undefined) {
+					die(JSON.stringify(package, undefined, 2));
+				}
+				if (!isValidPackageSid(packageId)) {
+					die('Invalid package identifier');
+				}
+				let logObj = (obj) => {
+					if (cmdBaseArgs[2] === undefined) {
+						log(JSON.stringify(obj, undefined, 2));
+					} else {
+						let logMap = {};
+						let skipped = 0;
+						for (let i = 2; i < cmdBaseArgs.length; i++) {
+							let arg = cmdBaseArgs[i];
+							if (arg in logMap) {
+								skipped++;
+								continue;
+							}
+							let split = arg.split('.');
+							if (split.length === 1) {
+								if (obj[arg] !== undefined) {
+									logMap[arg] = obj[arg];
+								}
+							} else if (split.length === 2) {
+								if (obj[split[0]] !== undefined && obj[split[0]][split[1]] !== undefined) {
+									logMap[arg] = obj[split[0]][split[1]];
+								}
+							}
 						}
-						apiPost({
-							action: cmdArgs[1]
-						}, (obj) => {
-							die(obj);
+						let keys = Object.keys(logMap);
+						if (keys.length === 1 && cmdBaseArgs.length - skipped === 3) {
+							log(JSON.stringify(logMap[keys[0]]));
+						} else {
+							for (let key of keys) {
+								log(`${key} = ${JSON.stringify(logMap[key])}`);
+							}
+						}
+					}
+				};
+				checkPackageAvailability(packageId, (availability) => {
+					let show = (authToken) => {
+						getBjspmPackageJson(packageId, (obj) => {
+							logObj(obj);
+							process.exit();
+						}, authToken, (err) => {
+							if (err.response && err.response.statusCode === 404) {
+								die('No information available about this package');
+							} else {
+								_onGotError(err);
+							}
 						});
+					};
+					if (availability === 'public') {
+						show();
+					} else {
+						getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
+							if (token === null) {
+								die('Not authorized');
+							} else {
+								show(token);
+							}
+						}, false, true);
+					}
+				});
+			}
+				break;
+			case 'cache': {
+				let files = fs.existsSync(appConfig.packageCachePath) ? fs.readdirSync(appConfig.packageCachePath).filter(file => file.endsWith('.zip')) : [];
+				let filePaths = [];
+				let totalSize = 0;
+				for (let file of files) {
+					let filePath = path.resolve(appConfig.packageCachePath, file);
+					let stat = fs.statSync(filePath);
+					totalSize += stat.size;
+					filePaths.push(filePath);
+				}
+				if (cmdBaseArgs.length === 1) {
+					die(`Cache: ${files.length} package${files.length === 1 ? '' : 's'}, ${filesize(totalSize, { standard: "iec" })}`);
+				} else {
+					switch (cmdBaseArgs[1]) {
+						case 'clean':
+						case 'clear': {
+							if (cmdBaseArgs.length > 2) {
+								showCommandHelp('cache');
+							}
+							for (let filePath of filePaths) {
+								try {
+									fs.unlinkSync(filePath);
+								} catch (e) {
+									die(panickMsg, e);
+								}
+							}
+							log(`Cache cleared (${files.length} files, ${filesize(totalSize, { standard: "iec" })})`);
+						}
+							break;
+						case 'dir': {
+							if (cmdBaseArgs.length > 3) {
+								showCommandHelp('cache');
+							}
+							let dir = cmdBaseArgs[2];
+							if (dir !== undefined) {
+								if (dir === 'default') {
+									dir = getDefaultAppConfig().packageCachePath;
+								}
+								if (!path.isAbsolute(dir)) {
+									die('Only absolute paths are allowed');
+								}
+								if (existsAsFile(dir)) {
+									die('Path resolves to a file, must be a directory');
+								}
+								appConfig.packageCachePath = dir;
+								storeAppConfig();
+								die(resolvePathNative(dir));
+							} else {
+								die(appConfig.packageCachePath);
+							}
+						}
+							break;
+						case 'max-size': {
+							if (cmdBaseArgs.length > 3) {
+								showCommandHelp('cache');
+							}
+							let size = cmdBaseArgs[2];
+							if (size === undefined) {
+								if (appConfig.maxCacheSize === null) {
+									log('Cache size limit: none');
+								} else {
+									log(`Cache size limit: ${filesize(appConfig.maxCacheSize, { standard: "iec" })}`);
+								}
+							} else if (/^\d+$/.test(size)) {
+								appConfig.maxCacheSize = parseInt(size);
+
+								if (isFinite(appConfig.maxCacheSize)) {
+									appConfig.maxCacheSize *= 1048576;
+								}
+								if (!isFinite(appConfig.maxCacheSize)) {
+									appConfig.maxCacheSize = null;
+								}
+								storeAppConfig();
+								log('New max cache size set');
+							} else if (size === 'none') {
+								appConfig.maxCacheSize = null;
+								storeAppConfig();
+								log('Cache size limit annulled');
+							} else {
+								log('Invalid new max cache size');
+							}
+						}
+					}
+					process.exit();
+				}
+			}
+				break;
+			case 'version':
+				let varg = cmdBaseArgs[1];
+
+				if (varg === undefined) {
+					let packageType = getPackageType(package, true);
+
+					if (packageType === 'user') {
+						die(`BJSPM v${version}, ${getUserPackageSid()}`);
+					} else {
+						die(`BJSPM v${version}`);
+					}
+				}
+				if (!existsAsFile(packageJsonPath)) {
+					die('No package file; please run "bjspm init" first');
+				}
+				if (semverValid(varg) !== null) {
+					if (package.version.length !== 0 && !semverGt(varg, package.version)) {
+						die(`New version must be greater than current version (${package.version})`);
+					}
+					package.version = varg;
+					storePackage();
+					die(`v${package.version}`);
+				} else {
+					let preid = undefined;
+					if (conf === cmdConfig['preid']) {
+						preid = conf[0];
+					}
+					let arr = ['major', 'minor', 'patch', 'premajor', 'preminor', 'prepatch', 'prerelease'];
+					if (arr.indexOf(varg) === -1) {
+						showCommandHelp('version');
+					}
+					let newVersion = semverInc(package.version, varg, preid);
+					if (newVersion !== null) {
+						package.version = newVersion;
+						storePackage();
+						die(`v${package.version}`);
+					} else {
+						die(panickMsg);
+					}
+				}
+				break;
+			case 'list':
+			case 'll':
+			case 'la':
+			case 'ls':
+				if (cmdBaseArgs.length > 1) {
+					showCommandHelp('ls');
+				}
+				let json = false;
+				if (conf = cmdConfig['json']) {
+					json = getConfigBool(conf[0]);
+				}
+				if (!json) {
+					if (package.sid.length !== 0) {
+						log(package.sid, process.cwd());
+					} else {
+						let packageType = getPackageType(package, true);
+
+						if (packageType === 'user') {
+							log(getUserPackageSid(), process.cwd());
+						} else {
+							log(process.cwd());
+						}
+					}
+				}
+				if (package.dependencies.length === 0) {
+					if (!json) {
+						die('`-- (empty)\n');
+					} else {
+						die(JSON.stringify(package, undefined, 2) + '\n');
+					}
+				}
+				let maxDepth = Infinity;
+				if (conf = cmdConfig['depth']) {
+					if (conf[0] === undefined) {
+						maxDepth = 1;
+					} else {
+						maxDepth = parseInt(conf[0]);
+
+						if (isNaN(maxDepth) || maxDepth < 0) {
+							maxDepth = Infinity;
+						}
+					}
+				}
+				if (json) {
+					let addDependencies = (package, depth, branch, dependenciesCache, callback) => {
+						if (depth > maxDepth) {
+							callback();
+							return;
+						}
+						let addToBranch = (dependencies) => {
+							for (let i = 0; i < dependencies.length; i++) {
+								let dependency = dependencies[i];
+								let obj = {
+									type: dependency.type,
+									dependencies: {}
+								};
+								if (dependency.type === 'user' && dependency.package !== null) {
+									obj.version = dependency.package.version;
+								}
+								branch[dependency.id] = obj;
+
+								if (dependency.package !== null) {
+									addDependencies(dependency.package, depth + 1, obj.dependencies, dependenciesCache, callback);
+								} else {
+									if (i === dependencies.length - 1) {
+										callback();
+									}
+								}
+							}
+						};
+						if (dependenciesCache[package.sid] !== undefined) {
+							addToBranch(dependenciesCache[package.sid], callback);
+						} else {
+							getDependencies(package, (dependencies) => {
+								dependenciesCache[package.sid] = dependencies;
+								addToBranch(dependencies, callback);
+							}, false);
+						}
+					}
+					let obj = {};
+					addDependencies(package, 0, obj, {}, () => {
+						die(JSON.stringify({ dependencies: obj }, undefined, 2) + '\n');
+					});
+				} else {
+					let listDependencies = (package, depth, dependenciesCache, callback) => {
+						if (depth > maxDepth) {
+							callback();
+							return;
+						}
+						let listPackages = (dependencies, callback) => {
+							for (let i = 0; i < dependencies.length; i++) {
+								let dependency = dependencies[i];
+								let prefix = '';
+								for (let j = 0; j < depth; j++) {
+									prefix += '| ';
+								}
+								if (dependency.package !== null) {
+									if (!(i === 0 && depth === 0) && i === dependencies.length - 1) {
+										log(`${prefix}\`-- ${dependency.package.sid}`);
+									} else {
+										log(`${prefix}+-- ${dependency.package.sid}`);
+									}
+									listDependencies(dependency.package, depth + 1, dependenciesCache, callback);
+								} else {
+									if (i === dependencies.length - 1) {
+										log(`${prefix}\`-- ${dependency.id}`);
+										callback();
+									} else {
+										log(`${prefix}+-- ${dependency.id}`);
+									}
+								}
+							}
+						};
+						if (dependenciesCache[package.sid] !== undefined) {
+							listPackages(dependenciesCache[package.sid], callback);
+						} else {
+							getDependencies(package, (dependencies) => {
+								dependenciesCache[package.sid] = dependencies;
+								listPackages(dependencies, callback);
+							}, false);
+						}
+					}
+					listDependencies(package, 0, {}, () => {
+						die();
+					});
+				}
+				break;
+			case 'c':
+			case 'config': {
+				let listConfigParams = (config = appConfig) => {
+					die(JSON.stringify(config, undefined, 2));
+				};
+				switch (cmdBaseArgs[1]) {
+					case 'get': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('config');
+						}
+						let param = cmdBaseArgs[2];
+
+						if (param === undefined) {
+							listConfigParams();
+						}
+						die(appConfig[param]);
+					}
+						break;
+					case 'set': {
+						if (cmdBaseArgs.length > 4) {
+							showCommandHelp('config');
+						}
+						let param = cmdBaseArgs[2];
+						let value = cmdBaseArgs[3];
+
+						if (param === undefined || value === undefined) {
+							showCommandHelp('config');
+						}
+						try {
+							appConfig[param] = JSON.parse(value);
+						} catch (e) {
+							appConfig[param] = value;
+						}
+						storeAppConfig();
+						die(`${param} = ${JSON.stringify(appConfig[param])}`);
+					}
+						break;
+					case 'delete': {
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('config');
+						}
+						let param = cmdBaseArgs[2];
+
+						if (!(param in appConfig)) {
+							die(`Parameter not set`);
+						}
+						delete appConfig[param];
+						storeAppConfig();
+						process.exit();
+					}
+						break;
+					case 'ls':
+					case 'list': {
+						if (cmdBaseArgs.length > 2) {
+							showCommandHelp('config');
+						}
+						let config = appConfig;
+						if (conf = cmdConfig['long']) {
+							if (getConfigBool(conf[0])) {
+								config = getDefaultAppConfig();
+							}
+						}
+						listConfigParams(config);
 					}
 						break;
 					case 'reset': {
-						apiPost({
-							action: 'wipe'
-						}, (obj) => {
-							package.version = '1.0.0';
-							package.sid = '';
-							storePackage();
+						if (cmdBaseArgs.length > 3) {
+							showCommandHelp('config');
+						}
+						let param = cmdBaseArgs[2];
+						if (param !== undefined) {
+							let defaultAppConfig = getDefaultAppConfig();
 
-							if (fs.existsSync(filePathsPath)) {
-								fs.unlinkSync(filePathsPath);
+							if (!(param in defaultAppConfig)) {
+								die(`Parameter not in defaults`);
 							}
-							die('Package reset', obj);
-						});
+							appConfig[param] = defaultAppConfig[param];
+							storeAppConfig();
+							die(`${param} = ${JSON.stringify(appConfig[param])}`);
+						} else {
+							appConfig = getDefaultAppConfig();
+							storeAppConfig();
+							die('App config reset to default');
+						}
 					}
 						break;
-					case 'test':
-						die(getFileBaseName(cmdArgs[1]));
-						break;
 					default:
-						showQuickHelp();
+						showCommandHelp('config');
 				}
 			}
-		});
-	});
+				break;
+			case 'api': {
+				if (cmdArgs[1] === undefined) {
+					break;
+				}
+				apiPost({
+					action: cmdArgs[1]
+				}, (obj) => {
+					die(obj);
+				});
+			}
+				break;
+			case 'reset': {
+				apiPost({
+					action: 'wipe'
+				}, (obj) => {
+					package.version = '1.0.0';
+					package.sid = '';
+					storePackage();
+
+					if (fs.existsSync(filePathsPath)) {
+						fs.unlinkSync(filePathsPath);
+					}
+					die('Package reset', obj);
+				});
+			}
+				break;
+			case 'test':
+				die([isValidPackageName(''), isValidPackageVersion(''), isValidPackageUsername('')]);
+				break;
+			default:
+				showQuickHelp();
+		}
+	}
 });
 
 function _onGotError(err) {
@@ -1985,8 +2114,11 @@ function _onGotError(err) {
 			case 403:
 				die(`Server error: 403 Forbidden`);
 				break;
+			case 413:
+				die(`Server error: 413 Request Entity Too Large`);
+				break;
 			case 500:
-				die(`Server error: 500 Internal Server Error`, err.response.body);
+				die(`Server error: 500 Internal Server Error`);
 				break;
 			default:
 				die(`Server error: ${err.response.statusCode}`);
@@ -2027,9 +2159,12 @@ function getArgsConfig(args, singletons) {
 			case '-l':
 				arg = '--long';
 				break;
+			case '--':
+				activeKey = null;
+				continue;
 		}
 		if (arg.startsWith('-')) {
-			if(/^-{1,2}\d+$/.test(arg)){
+			if (/^-{1,2}\d+$/.test(arg)) {
 				if (activeKey !== null) {
 					config[activeKey].push(arg);
 				} else {
@@ -2066,6 +2201,88 @@ function getArgsConfig(args, singletons) {
 	return config;
 }
 
+function promptRequiredReading(callback) {
+	let storedRequiredReading = getStoredRequiredReading();
+	let expiry = 86400000;
+
+	if (storedRequiredReading.completed && Date.now() - storedRequiredReading.updated < expiry) {
+		callback();
+		return;
+	}
+	getRequiredReading((requiredReading) => {
+		let names = Object.keys(requiredReading.library);
+		let nameIndex = 0;
+		let flush = false;
+		let hasRead = {
+			updated: Date.now(),
+			library: storedRequiredReading.library
+		};
+
+		let finalize = (ok = true) => {
+			if (flush) {
+				if (Date.now() - requiredReading.time >= expiry) {
+					process.exit();
+				}
+				hasRead.completed = ok;
+
+				let json = JSON.stringify(hasRead, undefined, 2);
+
+				mksubdirSync(requiredReadingStore);
+				fs.writeFileSync(requiredReadingStore, json, 'utf8');
+			}
+			if (ok) {
+				callback();
+			} else {
+				process.exit();
+			}
+		};
+
+		let next = () => {
+			let name = names[nameIndex++];
+
+			if (name === undefined) {
+				finalize();
+				return;
+			}
+			let mustRead = false;
+			let { version, url } = requiredReading.library[name];
+
+			if (!(name in storedRequiredReading.library)) {
+				mustRead = true;
+			} else {
+				let stored = storedRequiredReading.library[name];
+				let storedVersionSplit = stored.version.split('.').map(s => parseInt(s));
+				let versionSplit = version.split('.').map(s => parseInt(s));
+
+				if (storedVersionSplit[0] < versionSplit[0] || storedVersionSplit[1] < versionSplit[1]) {
+					mustRead = true;
+				}
+			}
+			if (mustRead) {
+				let prompt = `To use BJSPM, you must have fully read and accepted version ${version} of the ${name}, which can be found at:\n${url}\n\nHave you done so? (y/n) `;
+
+				readline.question(prompt, (answer) => {
+					switch (answer.toLowerCase()) {
+						case 'y':
+						case 'yes':
+							flush = true;
+							hasRead.library[name] = requiredReading.library[name];
+							next();
+							break;
+						default:
+							finalize(false);
+							break;
+					}
+				});
+			} else {
+				hasRead.library[name] = requiredReading.library[name];
+				next();
+			}
+		};
+		next();
+	});
+}
+
 function download(url, filename, onProgress, callback, onGotError = _onGotError) {
 	const file = fs.createWriteStream(filename);
 	let res;
@@ -2099,6 +2316,7 @@ function download(url, filename, onProgress, callback, onGotError = _onGotError)
 
 function pollUsername(callback, defaultOption = '') {
 	let prompt = defaultOption ? `Username: (${defaultOption}) ` : `Username: `;
+
 	readline.question(prompt, (username) => {
 		if (defaultOption && username.length === 0) {
 			username = defaultOption;
@@ -2113,15 +2331,31 @@ function pollUsername(callback, defaultOption = '') {
 
 async function apiPost(formData, callback, onError) {
 	const form = new FormData();
+
 	for (let key in formData) {
 		if (formData[key] !== null && formData[key] !== undefined) {
-			if (typeof formData[key] === 'boolean') {
-				form.append(key, formData[key] ? '1' : '0');
-			} else {
-				form.append(key, formData[key]);
+			switch (typeof formData[key]) {
+				case 'boolean': {
+					form.append(key, formData[key] ? '1' : '0');
+				}
+					break;
+				case 'string': {
+					form.append(key, formData[key]);
+				}
+					break;
+				case 'object': {
+					if (formData[key] instanceof fs.ReadStream) {
+						form.append(key, formData[key]);
+					} else {
+						form.append(key, JSON.stringify(formData[key]));
+					}
+				}
+					break;
 			}
 		}
 	}
+	form.append('cli_version', version);
+
 	try {
 		const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 			body: form
@@ -2152,17 +2386,18 @@ async function apiPost(formData, callback, onError) {
 		}
 	}
 }
+
 async function getJson(url, callback, onGotError = _onGotError) {
 	try {
 		const { body } = await got.get(url);
 		try {
 			let obj = JSON.parse(body);
 			if (obj.error) {
-				die('ERROR', obj.error);
+				die('Server error:', obj.error);
 			}
 			callback(obj);
 		} catch (e) {
-			die(e, body);
+			die('Server error:', body);
 		}
 	} catch (err) {
 		onGotError(err);
@@ -2350,10 +2585,6 @@ function getAuthTokenWithPackagePermissions(packageId, permissions, callback, de
 				}
 				log(credentialsMsg);
 				pollUsername((username) => {
-					if (authTokens[username] !== undefined) {
-						callback(null);
-						return;
-					}
 					getAuthToken(username, () => {
 						getAuthTokenWithPackagePermissions(packageId, permissions, callback, defaultToAllGranted, false);
 					}, false);
@@ -2415,6 +2646,29 @@ function getTmpToken(callback) {
 	});
 }
 
+function getChallenge(callback) {
+	apiPost({
+		action: 'GET_CHALLENGE'
+	}, (obj) => {
+		callback(obj.challenge);
+	});
+}
+
+function getSolvedChallenge(callback) {
+	getChallenge((challenge) => {
+		for (let suffix = 0; suffix <= challenge.max; suffix++) {
+			let hash = getHash(`${challenge.prefix}_${suffix}`, 'md5');
+
+			if (hash === challenge.hash) {
+				challenge.suffix = suffix;
+				callback(challenge);
+				return;
+			}
+		}
+		callback(null);
+	});
+}
+
 function registerPackageDownload(packageId, callback) {
 	getTmpToken(() => {
 		apiPost({
@@ -2433,6 +2687,14 @@ function getServerConfig(callback) {
 	apiPost({
 		action: 'GET_CONFIG'
 	}, callback);
+}
+
+function getRequiredReading(callback) {
+	apiPost({
+		action: 'GET_REQUIRED_READING'
+	}, (obj) => {
+		callback(obj.requiredReading);
+	});
 }
 
 function getPackageDownloadUrls(packageId, callback, authToken, patch) {
@@ -2477,9 +2739,9 @@ function resolvePackageSid(id, callback, authToken) {
 
 function isRegisteredPackageSid(sid, callback) {
 	apiPost({
-		action: 'PACKAGE_SID_EQUALS_L',
+		action: 'PACKAGE_SID_EQUALS',
 		package: sid,
-		str: sid.toLowerCase()
+		str: sid
 	}, (obj) => {
 		callback(obj.result);
 	});
@@ -2488,6 +2750,7 @@ function isRegisteredPackageSid(sid, callback) {
 function getAppDataPackagePath(packageId, patch) {
 	let fileNameHash = getHash(packageId + patch, 'md5');
 	let filePath = path.resolve(appConfig.packageCachePath, fileNameHash + '.zip');
+
 	return filePath;
 }
 
@@ -2566,7 +2829,7 @@ function getInstallDirFromInstallId(installId, baseDir = packagesPath) {
 		return null;
 	}
 	if (installId.indexOf('/') !== -1) {
-		let matches = getMajorInstallId(installId).match(regexInstallUser);
+		let matches = installId.match(regexInstallUser);
 		let user = matches[1];
 		let packageName = matches[2];
 		let packageVersion = regexMajorVersion.test(matches[3]) ? matches[3] : semverMajor(matches[3]);
@@ -2579,11 +2842,12 @@ function getInstallDirFromInstallId(installId, baseDir = packagesPath) {
 
 function getPackageFromInstallId(installId, callback, baseDir) {
 	let packageDir = getInstallDirFromInstallId(installId, baseDir);
+
 	if (packageDir === null) {
 		return null;
 	}
-
 	let packageFile = path.resolve(packageDir, 'bjspm', 'package.json');
+
 	if (fs.existsSync(packageFile)) {
 		return loadJsonFile(packageFile, callback);
 	} else {
@@ -2596,15 +2860,27 @@ function getPackageFromInstallId(installId, callback, baseDir) {
 
 function isPackageInstalled(installId, baseDir) {
 	let packageDir = getInstallDirFromInstallId(installId, baseDir);
-	if (packageDir === null) {
-		return undefined;
-	}
-	if (!fs.existsSync(packageDir)) {
+
+	return fs.existsSync(packageDir);
+}
+
+function isPackageInstalledForSure(installId, baseDir) {
+	let package = getPackageFromInstallId(installId, undefined, baseDir);
+
+	if (package === null) {
 		return false;
 	}
-	let packageFile = path.resolve(packageDir, 'bjspm', 'package.json');
+	let packageType = getPackageTypeFromSid(installId);
 
-	return fs.existsSync(packageFile);
+	if (packageType === 'user') {
+		if (regexUserMajor.test(installId)) {
+			return installId === getMajorInstallId(package.sid);
+		} else {
+			return installId === package.sid;
+		}
+	} else {
+		return installId === package.sid;
+	}
 }
 
 function getDependencies(package, callback, getSubDependencies = true, dependencies = []) {
@@ -2681,7 +2957,9 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 	let authToken = undefined;
 	let proceed = () => {
 		if (noteVersion) {
-			log(`Note: only the package's major version will be saved to the dependencies list`);
+			let suffix = appConfig.logDownloadProgress ? '' : '\n';
+
+			log(`Note: only the package's major version will be saved to the dependencies list${suffix}`);
 		}
 		let packageBaseId = null;
 
@@ -2818,7 +3096,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 				default:
 					getAuthTokenWithPackagePermissions(packageId, ['mayRead'], (token) => {
 						if (token === null) {
-							log(`Please enter your croncle.com account credentials to install "${packageId}"`);
+							log(`Please enter your Croncle.com account credentials to install "${packageId}"`);
 							pollUsername((username) => {
 								getAuthToken(username, (token) => {
 									authToken = token;
@@ -2853,7 +3131,7 @@ function installPackage(packageId, folder, dlType, callback, save = false, force
 				default:
 					getAuthTokenWithPackagePermissions(packageBaseId, ['mayRead'], (token) => {
 						if (token === null) {
-							log(`Please enter your croncle.com account credentials to install from "${packageBaseId}"`);
+							log(`Please enter your Croncle.com account credentials to install from "${packageBaseId}"`);
 							pollUsername((username) => {
 								getAuthToken(username, (token) => {
 									authToken = token;
@@ -2950,6 +3228,7 @@ function isCacheFull() {
 
 function isPackageInCache(packageId) {
 	let zipPath = getAppDataPackagePath(packageId);
+	
 	return fs.existsSync(zipPath);
 }
 
@@ -2996,19 +3275,25 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 
 					let extractDir;
 					if (patchFrom === undefined) {
-						log('Extracting files from package archive...');
+						if (appConfig.logInstallVerbose) {
+							log('Extracting files from package archive...');
+						}
 						extractDir = targetPath;
 					} else {
-						log('Extracting files from patch archive...');
+						if (appConfig.logInstallVerbose) {
+							log('Extracting files from patch archive...');
+						}
 						extractDir = path.resolve(targetPath, 'tmp_' + randomBase36(16));
 						fs.mkdirSync(extractDir);
 					}
 					extract(zipPath, { dir: extractDir }).then(() => {
 						if (patchFrom !== undefined) {
-							log(`Applying patch...`);
+							if (appConfig.logInstallVerbose) {
+								log(`Applying patch...`);
+							}
 							let filePathsPath = path.resolve(targetPath, 'bjspm', 'files.json');
 							loadJsonFile(filePathsPath, (prevFilePaths) => {
-								getDirectoryFilesWithChecksum(targetPath, 'sha256', (entries) => {
+								getDirectoryFilesWithChecksum(targetPath, filesHashFunction, (entries) => {
 
 									// Move one specimen of each currently existing file that has to be kept into the tmp dir
 									for (let hash in patch.files) {
@@ -3023,7 +3308,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 										fs.renameSync(currentFilePath, filePath);
 									}
 
-									// Delete files and directories outside the tmp dir
+									// Delete registered previous package files and directories outside the tmp dir, keep new ones
 									if (prevFilePaths !== null) {
 										for (let hash in prevFilePaths) {
 											let leftoverFiles = prevFilePaths[hash];
@@ -3031,21 +3316,26 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 											for (let file of leftoverFiles) {
 												let filePath = path.resolve(targetPath, file);
 
-												if (fs.existsSync(filePath)) {
-													let stats = fs.statSync(filePath);
-													if (stats.isFile()) {
-														let dir = path.dirname(filePath);
-														fs.unlinkSync(filePath);
+												if (!fs.existsSync(filePath)) {
+													continue;
+												}
+												let stats = fs.statSync(filePath);
 
-														let list = fs.readdirSync(dir);
-														if (list.length === 0) {
-															fs.rmdirSync(dir);
-														}
-													} else {
-														let list = fs.readdirSync(filePath);
-														if (list.length === 0) {
-															fs.rmdirSync(filePath);
-														}
+												if (stats.isFile()) {
+													let dir = path.dirname(filePath);
+
+													fs.unlinkSync(filePath);
+
+													let list = fs.readdirSync(dir);
+
+													if (list.length === 0) {
+														fs.rmdirSync(dir);
+													}
+												} else {
+													let list = fs.readdirSync(filePath);
+
+													if (list.length === 0) {
+														fs.rmdirSync(filePath);
 													}
 												}
 											}
@@ -3100,18 +3390,19 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 					});
 				};
 				if (checkIntegrity) {
-					if (patchFrom === undefined) {
-						log(`Verifying package integrity...`);
-					} else {
-						log(`Verifying package patch integrity...`);
+					if (appConfig.logInstallVerbose) {
+						if (patchFrom === undefined) {
+							log(`Verifying package integrity...`);
+						} else {
+							log(`Verifying package patch integrity...`);
+						}
 					}
-					getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
-						if (checksum !== checksums[dlType][checksumHashFunction]) {
-							log(checksum + ' !== ' + checksums[dlType][checksumHashFunction]);
+					getFileChecksum(zipPath, integrityHashFunction, (checksum) => {
+						if (checksum !== checksums[dlType][integrityHashFunction]) {
 							log(`Package integrity check failed`);
-							log(`Deleting package...`);
+							log(`Deleting package archive...`);
 							fs.unlinkSync(zipPath);
-							die(`Aborting`);
+							die(`Aborted.`);
 						} else {
 							onIntegrityCheckOK();
 						}
@@ -3121,19 +3412,25 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 				}
 			};
 			if (fs.existsSync(zipPath)) {
-				if (patchFrom === undefined) {
-					log(`\nPackage "${urlArray.base}" found in cache`);
-					log(`Verifying package integrity...`);
-				} else {
-					log(`\nPackage patch "${patchFrom}" -> "${packageId}" found in cache`);
-					log(`Verifying package patch integrity...`);
+				if (appConfig.logInstallVerbose) {
+					if (patchFrom === undefined) {
+						log(`\nPackage "${urlArray.base}" found in cache`);
+						log(`Verifying package integrity...`);
+					} else {
+						log(`\nPackage patch "${patchFrom}" -> "${packageId}" found in cache`);
+						log(`Verifying package patch integrity...`);
+					}
 				}
-				getFileChecksum(zipPath, checksumHashFunction, (checksum) => {
-					if (checksum !== checksums[dlType][checksumHashFunction]) {
-						log(`Integrity check failed, deleting package from cache...`);
-						fs.unlinkSync(zipPath);
-						log(`Downloading package`);
-						downloadPackage(packageId, dlType, targetPath, callback, urlIndex, patchFrom);
+				getFileChecksum(zipPath, integrityHashFunction, (checksum) => {
+					if (checksum !== checksums[dlType][integrityHashFunction]) {
+						if (appConfig.logInstallVerbose) {
+							log(`Integrity check failed, deleting package from cache...`);
+							fs.unlinkSync(zipPath);
+							log(`Downloading package...`);
+						} else {
+							fs.unlinkSync(zipPath);
+						}
+						downloadPackage(packageId, dlType, targetPath, callback, authToken, urlIndex, patchFrom);
 					} else {
 						if (patchFrom === undefined) {
 							onDownloaded(false);
@@ -3148,7 +3445,7 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 			} else {
 				let url = urlArray[dlType];
 				getPackageJson(urlArray.base, (dlPackage) => {
-					let prefix = ' -> ';
+					let prefix = ' | ';
 					let downloadIndex = 0;
 					let rawTotalSize = 0;
 
@@ -3201,10 +3498,12 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 						patch = dlPackage;
 					}
 					if (urlIndex === 0) {
+						let prefix = appConfig.logDownloadProgress || appConfig.logInstallVerbose ? '\n' : '';
+
 						if (patchFrom !== undefined) {
-							log(`\nDownloading package patch "${patchFrom}" -> "${packageId}"`);
+							log(`${prefix}Downloading package patch "${patchFrom}" -> "${packageId}" (${filesize(rawTotalSize, { standard: "iec" })})`);
 						} else {
-							log(`\nDownloading package "${urlArray.base}"`);
+							log(`${prefix}Downloading package "${urlArray.base}" (${filesize(rawTotalSize, { standard: "iec" })})`);
 						}
 					}
 					if (authToken !== undefined) {
@@ -3212,30 +3511,33 @@ function downloadPackage(packageId, dlType, targetPath, callback, authToken, url
 							url += `&authToken=${authToken}`;
 						}
 					}
-					let loggedFirst = false;
-					download(url, zipPath, (status) => {
+					download(url, zipPath, appConfig.logDownloadProgress ? (status) => {
 						if (status.percentage === undefined) {
 							return;
 						}
-						if (!loggedFirst) {
-							log(`1/${sortedFiles.length}${prefix}${sortedFiles[0].path}`);
-							loggedFirst = true;
-						}
 						for (let i = downloadIndex; i < sortedFiles.length; i++) {
 							let file = sortedFiles[i];
-							let nextFile = sortedFiles[i + 1];
+							let percentageStr = Math.round(file.atSizePercentage * 100).toString();
+
 							if (status.percentage >= file.atSizePercentage) {
-								if (nextFile !== undefined) {
-									log(`${downloadIndex + 2}/${sortedFiles.length}${prefix}${nextFile.path}`);
+								let padding = '';
+
+								switch (percentageStr.length) {
+									case 1:
+										padding += '  ';
+										break;
+									case 2:
+										padding += ' ';
 								}
+								log(`${padding}${percentageStr}%${prefix}${file.path}`);
 								downloadIndex++;
 							}
 						}
-					}, (err) => {
+					} : function () { }, (err) => {
 						if (err) {
 							if (!fs.existsSync(zipPath)) {
 								if (urls.length > urlIndex + 1) {
-									downloadPackage(packageId, dlType, targetPath, callback, urlIndex + 1, patchFrom);
+									downloadPackage(packageId, dlType, targetPath, callback, authToken, urlIndex + 1, patchFrom);
 								} else {
 									log(panickMsg);
 									console.trace();
@@ -3298,7 +3600,7 @@ function getBjspmPackageJson(packageId, callback, authToken, onError) {
 	getJson(url, callback, onError);
 }
 
-function uploadPackage(path, fileData, authToken, type, access, tags, callback, onGotError = _onGotError, patch) {
+function uploadPackage(path, fileData, authToken, type, access, tags, callback, patch) {
 	if (patch === null) {
 		log('Uploading package archive...');
 	} else {
@@ -3320,7 +3622,8 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 			type: type,
 			access: access,
 			tags: JSON.stringify(tags),
-			patch: patch !== null ? JSON.stringify(patch) : undefined
+			patch: patch !== null ? JSON.stringify(patch) : undefined,
+			cli_version: version
 		};
 		for (let key in formData) {
 			if (formData[key] !== null && formData[key] !== undefined) {
@@ -3329,15 +3632,19 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 		}
 		try {
 			let uploadIndex = 0;
-			let prefix = ' -> ';
-			let prevPercent = -1;
-			let toLog = fileData.totalSize > appConfig.logUploadThreshold;
+			let prefix = ' | ';
+			let toLog = fileData.totalSize > appConfig.logUploadThreshold * 1048576;
+			let prevPercentage = -1;
+			let skippedPercents = 0;
 
 			const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
 				body: form
 			}, (err) => {
 				if (err) {
-					die(panickMsg, err);
+					callback({
+						status: API_STATUS.ERR,
+						error: err.toString()
+					});
 				}
 			}).on('uploadProgress', progress => {
 				if (progress.percent === undefined || !toLog) {
@@ -3346,26 +3653,47 @@ function uploadPackage(path, fileData, authToken, type, access, tags, callback, 
 				for (let i = uploadIndex; i < fileData.length; i++) {
 					let file = fileData[i];
 					if (progress.percent >= file.atSizePercentage) {
-						let percent = Math.floor(progress.percent * 100);
-						if (percent !== prevPercent) {
-							prevPercent = percent;
-							log(`${percent}% ${prefix} ${file.path}`);
+						let percentage = Math.round(progress.percent * 100);
+
+						if (percentage === prevPercentage && !appConfig.logUploadVerbose) {
+							skippedPercents++;
+							uploadIndex++;
+							continue;
 						}
+						prevPercentage = percentage;
+
+						let percentageStr = percentage.toString();
+						let padding = '';
+
+						switch (percentageStr.length) {
+							case 1:
+								padding += '  ';
+								break;
+							case 2:
+								padding += ' ';
+						}
+						log(`${padding}${percentageStr}%${prefix}${file.path}${skippedPercents === 0 ? '' : ` (+${skippedPercents})`}`);
 						uploadIndex++;
 					}
 				}
-				if (progress.percent === 1 && toLog) {
+				if (progress.percent === 1 && appConfig.logUploadVerbose) {
 					log('Upload complete, waiting for server...');
 				}
 			});
 			try {
 				let obj = JSON.parse(body);
 				callback(obj);
-			} catch (e) {
-				die(e, body);
+			} catch (err) {
+				callback({
+					status: API_STATUS.ERR,
+					error: body
+				});
 			}
 		} catch (err) {
-			onGotError(err);
+			callback({
+				status: API_STATUS.ERR,
+				error: err.response.statusCode
+			});
 		}
 	});
 }
@@ -3417,44 +3745,6 @@ function uploadDescription(description, authToken, callback) {
 	});
 }
 
-function uploadDescription(description, authToken, callback, onGotError = _onGotError) {
-	getTmpToken(async () => {
-		const form = new FormData();
-		const formData = {
-			action: 'UPDATE_PACKAGE_DESCRIPTION',
-			authToken: authToken,
-			tmpToken: tmpToken,
-			package: package.sid,
-			description: description
-		};
-		for (let key in formData) {
-			if (formData[key] !== null && formData[key] !== undefined) {
-				form.append(key, formData[key]);
-			}
-		}
-		try {
-			const { body } = await got.post(`https://${appConfig.registry}/api.php`, {
-				body: form
-			}, (err) => {
-				if (err) {
-					die(panickMsg, err);
-				}
-			});
-			try {
-				let obj = JSON.parse(body);
-				if (obj.error) {
-					die('ERROR', obj.error);
-				}
-				callback(obj);
-			} catch (e) {
-				die(e, body);
-			}
-		} catch (err) {
-			onGotError(err);
-		}
-	});
-}
-
 function getFileBaseName(file) {
 	try {
 		if (!existsAsFile(file)) {
@@ -3477,8 +3767,9 @@ function getDirectoryBaseName(dir) {
 	}
 }
 
-function updateFileChecksum(localPath, algorithm, callback) {
+function updateFileChecksum(localPath, algorithm, callback, addIfDoesNotExist = false) {
 	let absPath = path.resolve(cwdPath, localPath);
+
 	if (!fs.existsSync(absPath)) {
 		callback();
 		return;
@@ -3489,6 +3780,7 @@ function updateFileChecksum(localPath, algorithm, callback) {
 			return;
 		}
 		let checksums = Object.keys(filePaths);
+
 		for (let checksum of checksums) {
 			let fp = filePaths[checksum];
 			let index = fp.indexOf(localPath);
@@ -3497,17 +3789,28 @@ function updateFileChecksum(localPath, algorithm, callback) {
 				continue;
 			}
 			fp.splice(index, 1);
+
 			if (fp.length === 0) {
 				delete filePaths[checksum];
 			}
 		}
 		getFileChecksum(absPath, algorithm, (checksum) => {
-			let arr = filePaths[checksum] ? filePaths[checksum] : [localPath];
-			filePaths[checksum] = arr;
+			let finalize = (write) => {
+				if (write) {
+					let arr = filePaths[checksum] || [localPath];
+					filePaths[checksum] = arr;
 
-			let json = JSON.stringify(filePaths, undefined, 2);
-			fs.writeFileSync(filePathsPath, json, 'utf8');
-			callback();
+					let json = JSON.stringify(filePaths, undefined, 2);
+					fs.writeFileSync(filePathsPath, json, 'utf8');
+				}
+				callback();
+			};
+
+			if (filePaths[checksum] === undefined) {
+				finalize(addIfDoesNotExist);
+			} else {
+				finalize(true);
+			}
 		});
 	});
 }
@@ -3565,7 +3868,25 @@ function isValidPackageUsername(name) {
 }
 
 function isValidPackageTag(tag) {
-	return isString(tag) && tag.length < 256 && tag.indexOf('@') === -1 && !semverValid(tag) && !semverValidRange(tag) && !isValidPackageVersionMajor(tag);
+	if (!isString(tag)) {
+		return false;
+	}
+	if (tag.length > 255) {
+		return false;
+	}
+	if (semverValid(tag)) {
+		return false;
+	}
+	if (semverValidRange(tag)) {
+		return false;
+	}
+	if (isValidPackageVersionMajor(tag)) {
+		return false;
+	}
+	if (!/^[a-zA-Z0-9_\-\.]+$/.test(tag)) {
+		return false;
+	}
+	return true;
 }
 
 function isValidRange(range) {
@@ -3644,11 +3965,11 @@ function isValidPackageVersionMajor(major) {
 }
 
 function isValidPackageVersion(version) {
-	return isString(version) && semver2Regex.test(version);
+	return isString(version) && version.length < 256 && semver2Regex.test(version);
 }
 
 function isValidPackageDescription(description) {
-	return isString(description) && description.length < 65536;
+	return isString(description) && description.length < 256;
 }
 
 function isValidPackageKeywords(keywords) {
@@ -3665,6 +3986,15 @@ function isValidPackageKeywords(keywords) {
 
 function isValidPackage() {
 	if (package.username.length !== 0) { // user package
+		if (package.sid.length !== 0 && getPackageTypeFromSid(package.sid) === 'user') {
+			let matches = package.sid.match(regexInstallUser);
+			let user = matches[1];
+			let packageName = matches[2];
+
+			if (package.username === user && package.name !== packageName && package.name.toLowerCase() === packageName.toLowerCase()) {
+				return false;
+			}
+		}
 		return isValidPackageName(package.name) &&
 			isValidPackageVersion(package.version) &&
 			isValidPackageDescription(package.description) &&
@@ -3682,6 +4012,9 @@ function isValidPackage() {
 
 function mayRead(file) {
 	try {
+		if (!fs.existsSync(file)) {
+			file = path.dirname(file);
+		}
 		fs.accessSync(file, fs.constants.R_OK);
 		return true;
 	} catch (err) {
@@ -3691,6 +4024,9 @@ function mayRead(file) {
 
 function mayWrite(file) {
 	try {
+		if (!fs.existsSync(file)) {
+			file = path.dirname(file);
+		}
 		fs.accessSync(file, fs.constants.W_OK);
 		return true;
 	} catch (err) {
@@ -3724,12 +4060,12 @@ function validatePackagePaths(files, baseDirs) {
 				_files.push(file);
 			} else {
 				if (filePaths.indexOf(file) !== -1) {
-					die(12, `Cannot add the same file twice: "${file}".`);
+					die(`Cannot add the same file twice: "${file}".`);
 				} else {
 					if (paths.indexOf(baseName) !== -1) {
-						die(5679, `File name conflict: cannot have both "${assocPaths[upperIndex]}" and "${file}".`);
+						die(`File name conflict: cannot have both "${assocPaths[upperIndex]}" and "${file}".`);
 					} else {
-						die(99, `For cross-OS compatibility, file names are case-insensitive. Cannot have both "${paths[upperIndex]}" and "${file}".`);
+						die(`For cross-OS compatibility, file names are case-insensitive. Cannot have both "${paths[upperIndex]}" and "${file}".`);
 					}
 				}
 			}
@@ -3760,18 +4096,18 @@ function validatePackagePaths(files, baseDirs) {
 
 				if (pathIndex !== -1) {
 					if (paths.indexOf(defaultPath) === -1) {
-						die(88, `For cross-OS compatibility, file names are case-insensitive. Cannot have both "${paths[pathIndex]}" and "${defaultPath}".`);
+						die(`For cross-OS compatibility, file names are case-insensitive. Cannot have both "${paths[pathIndex]}" and "${defaultPath}".`);
 					} else {
 						if (i === parts.length - 1) {
 							if (filePaths.indexOf(defaultPath) !== -1) {
-								die(555, `Cannot add the same file twice: "${defaultPath}".`);
+								die(`Cannot add the same file twice: "${defaultPath}".`);
 							} else {
 								let assocPath = assocPaths[pathIndex];
 
 								if (assocPath.startsWith(_dir)) {
 									assocPath = assocPath.substr(_dir.length);
 								}
-								die(6636, `File name conflict: cannot have both "${assocPath}" and "${localFile}".`);
+								die(`File name conflict: cannot have both "${assocPath}" and "${localFile}".`);
 							}
 						}
 					}
@@ -3842,7 +4178,7 @@ function getPackageFilePaths(files, baseDir, result = [], baseDirs = [], addEmpt
 	}
 }
 
-function getValidatedPackagePaths(files, subFilesOnly = false) {
+function getValidatedPackagePaths(files, sameBase = true, subFilesOnly = false) {
 	let orgPaths = [];
 	let resPaths = [];
 
@@ -3868,23 +4204,27 @@ function getValidatedPackagePaths(files, subFilesOnly = false) {
 	let _files = [];
 	let baseDirs = [];
 
-	for (let file of files) {
-		let stats = fs.statSync(file);
+	if(sameBase){
+		getPackageFilePaths(files, '.', paths, baseDirs);
+	} else {
+		for (let file of files) {
+			let stats = fs.statSync(file);
+	
+			if (stats.isDirectory()) {
+				if (subFilesOnly) {
+					getPackageFilePaths(['.'], file, paths, baseDirs, false);
+				} else {
+					let baseName = path.basename(resolvePath(file));
 
-		if (stats.isDirectory()) {
-			if (subFilesOnly) {
-				getPackageFilePaths(['.'], file, paths, baseDirs, false);
+					getPackageFilePaths([baseName], resolvePath(file, '..'), paths, baseDirs, true);
+				}
 			} else {
-				let baseName = path.basename(resolvePath(file));
-
-				getPackageFilePaths([baseName], resolvePath(file, '..'), paths, baseDirs, true);
+				_files.push(file);
 			}
-		} else {
-			_files.push(file);
 		}
+		getPackageFilePaths(_files, '.', paths, baseDirs);
 	}
-	getPackageFilePaths(_files, '.', paths, baseDirs);
-
+	
 	validatePackagePaths(paths, baseDirs);
 
 	let fullPaths = [];
@@ -3906,9 +4246,9 @@ function getValidatedPackagePaths(files, subFilesOnly = false) {
 }
 
 function zipFiles(files, callback, logZipping, subFilesOnly) {
-	let _files = getValidatedPackagePaths(files, subFilesOnly);
+	let _files = getValidatedPackagePaths(files, false, subFilesOnly);
 
-	tmp.dir({ unsafeCleanup: true }, (err, tmpDir, cleanupCallback) => {
+	tmp.dir({ unsafeCleanup: true }, (err, tmpDir) => {
 		if (err) {
 			die(panickMsg, err);
 		}
@@ -3917,7 +4257,7 @@ function zipFiles(files, callback, logZipping, subFilesOnly) {
 		let zipPath = tmpDir + '/archive.zip';
 		var output = fs.createWriteStream(zipPath);
 		var archive = archiver('zip', {
-			zlib: { level: 9 } // Sets the compression level.
+			zlib: { level: 0 } // Sets the compression level.
 		});
 		archive.pipe(output);
 
@@ -3956,13 +4296,13 @@ function zipFiles(files, callback, logZipping, subFilesOnly) {
 			file.atSizePercentage = accumulatedSize / totalSize;
 		}
 		archive.finalize().then(() => {
-			callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
+			callback({ zipPath: zipPath, fileData: fileData });
 		});
 	});
 }
 
 function zipPackage(callback, logZipping) {
-	tmp.dir({ unsafeCleanup: true }, (err, path, cleanupCallback) => {
+	tmp.dir({ unsafeCleanup: true }, (err, path) => {
 		if (err) {
 			die(panickMsg, err);
 		}
@@ -3974,30 +4314,26 @@ function zipPackage(callback, logZipping) {
 				paths.push('./' + entry.path);
 			}
 
-			let files = getValidatedPackagePaths(paths, false);
+			let files = getValidatedPackagePaths(paths, true, false);
 			let fileData = [];
 			let totalSize = 0;
 			let zipPath = path + '/archive.zip';
 			var output = fs.createWriteStream(zipPath);
 			var archive = archiver('zip', {
-				zlib: { level: 9 } // Sets the compression level.
+				zlib: { level: 0 } // Sets the compression level.
 			});
 			archive.pipe(output);
 
 			for (let entry of files) {
-				let skip = false;
-				for (let ignoreGlob of ignoreGlobs) {
-					if (ignoreGlob.match(entry.path)) {
-						skip = !ignoreGlob.negate;
-					}
-				}
-				if (skip) {
+				if (shouldIgnore(entry.path)) {
 					if (logZipping) {
 						log(`Skipping ${entry.path}`);
 					}
 				} else {
 					let entryStats = fs.statSync(entry.path);
+
 					totalSize += entryStats.size;
+
 					fileData.push({
 						path: entry.path,
 						size: entryStats.size,
@@ -4013,68 +4349,21 @@ function zipPackage(callback, logZipping) {
 			fileData['totalSize'] = totalSize;
 
 			let accumulatedSize = 0;
+
 			for (let file of fileData) {
 				accumulatedSize += file.size;
 				file.atSizePercentage = accumulatedSize / totalSize;
 			}
 			output.on('close', () => {
-				callback({ zipPath: zipPath, fileData: fileData, cleanupCallback: cleanupCallback });
+				callback({ zipPath: zipPath, fileData: fileData });
 			});
 			archive.finalize();
 		});
 	});
 }
 
-function getSubDirectories(dir) {
-	let results = [];
-	let list = fs.readdirSync(dir);
-
-	for (let fileName of list) {
-		let filePath = path.resolve(dir, fileName);
-		let stat = fs.statSync(filePath);
-		if (stat.isDirectory()) {
-			results.push(filePath);
-			let subPaths = getSubDirectories(filePath);
-			results = results.concat(subPaths);
-		}
-	}
-	return results;
-}
-
-function getSubFiles(dir) {
-	let results = [];
-	let list = fs.readdirSync(dir);
-
-	for (let fileName of list) {
-		let filePath = path.resolve(dir, fileName);
-		let stat = fs.statSync(filePath);
-		if (stat.isDirectory()) {
-			results = results.concat(getSubFiles(filePath));
-		} else {
-			results.push(filePath);
-		}
-	}
-	return results;
-}
-
-function getEmptySubDirectories(dir) {
-	let results = [];
-	let list = fs.readdirSync(dir);
-
-	for (let fileName of list) {
-		let filePath = path.resolve(dir, fileName);
-		let stat = fs.statSync(filePath);
-		if (stat.isDirectory()) {
-			let subFiles = fs.readdirSync(filePath)
-			if (subFiles.length === 0) {
-				results.push(filePath);
-			} else {
-				let subPaths = getEmptySubDirectories(filePath);
-				results = results.concat(subPaths);
-			}
-		}
-	}
-	return results;
+function isEmptyDirectory(dir) {
+	return fs.readdirSync(dir).length === 0;
 }
 
 function getDirectoryFiles(dir, relDir = '', results = [], useIgnores) {
@@ -4083,16 +4372,16 @@ function getDirectoryFiles(dir, relDir = '', results = [], useIgnores) {
 	for (let fileName of list) {
 		let filePath = path.resolve(dir, fileName);
 		let stat = fs.statSync(filePath);
+
 		if (stat.isDirectory()) {
 			let relPath = relDir + fileName + '/';
-
-			if (useIgnores && shouldIgnore(relPath)) {
-				continue;
-			}
 			let orgLen = results.length;
 
 			getDirectoryFiles(filePath, relDir + fileName + '/', results, useIgnores);
 			if (results.length === orgLen) {
+				if (useIgnores && shouldIgnore(relPath)) {
+					continue;
+				}
 				let entry = {
 					folder: relDir,
 					file: fileName + '/',
@@ -4123,6 +4412,10 @@ function getDirectoryFiles(dir, relDir = '', results = [], useIgnores) {
 
 function getDirectoryFilesWithChecksum(dir, hashFn, callback, useIgnores) {
 	let entries = getDirectoryFiles(dir, '', [], useIgnores);
+
+	if (entries.length === 0) {
+		callback(entries);
+	}
 	let done = 0;
 
 	for (let entry of entries) {
@@ -4139,12 +4432,16 @@ function getDirectoryFilesWithChecksum(dir, hashFn, callback, useIgnores) {
 	}
 }
 
-function getDirectoryFilePaths(dir, callback, useIgnores) {
-	getDirectoryFilesWithChecksum(dir, 'sha256', (entries) => {
+function getDirectoryFilePaths(dir, callback, useIgnores, excludes = []) {
+	getDirectoryFilesWithChecksum(dir, filesHashFunction, (entries) => {
 		let list = {};
 
 		for (let entry of entries) {
+			if (excludes.indexOf(entry) !== -1) {
+				continue;
+			}
 			let arr = list[entry.checksum];
+
 			if (arr === undefined) {
 				arr = list[entry.checksum] = [];
 			}
@@ -4162,17 +4459,22 @@ function getLoginAuthToken() {
 	}
 }
 
+function isSignedIn() {
+	return getLoginAuthToken() !== null;
+}
+
 function getPackageType(pk = package, ignoreSid = false) {
 	if (!ignoreSid && pk.sid.length !== 0) {
 		return getPackageTypeFromSid(pk.sid);
 	}
-	if (pk.name.length !== 0 && pk.version.length !== 0 && pk.username.length !== 0) { // user package
-		return 'user';
-	} else if (pk.name.length !== 0) { // named standalone package
-		return 'named';
-	} else { // unnamed standalone package
-		return 'unnamed';
+	if (isValidPackageName(pk.name)) {
+		if (isValidPackageVersion(pk.version) && isValidPackageUsername(pk.username)) {
+			return 'user';
+		} else {
+			return 'named';
+		}
 	}
+	return 'unnamed';
 }
 
 function getPackageTypeFromSid(sid) {
@@ -4203,6 +4505,7 @@ function getPromptUsername(packageId) {
 function loadJsonFile(jsonPath, callback, maxSize = 10485760) {
 	if (fs.existsSync(jsonPath)) {
 		let stats = fs.statSync(jsonPath);
+
 		if (stats.size > maxSize) {
 			if (callback !== undefined) {
 				callback(null);
@@ -4227,23 +4530,13 @@ function loadJsonFile(jsonPath, callback, maxSize = 10485760) {
 }
 
 function loadAppConfig(callback) {
-	if (fs.existsSync(appDataConfigPath)) {
-		fs.readFile(appDataConfigPath, 'utf8', function (err, data) {
-			if (err) {
-				die(panickMsg, err);
-			}
-			let _appConfig = appConfig; // Default app config
-			appConfig = JSON.parse(data);
+	let _appConfig = appConfig; // Default app config
+	appConfig = loadJsonFile(appDataConfigPath);
 
-			for (let key in _appConfig) {
-				if (!(key in appConfig)) {
-					appConfig[key] = _appConfig[key];
-				}
-			}
-			callback();
-		});
-	} else {
-		callback();
+	for (let key in _appConfig) {
+		if (!(key in appConfig)) {
+			appConfig[key] = _appConfig[key];
+		}
 	}
 }
 
@@ -4254,39 +4547,29 @@ function cleanAppConfig() {
 	}
 }
 
-function loadPackage(callback) {
-	if (fs.existsSync(packageJsonPath)) {
-		fs.readFile(packageJsonPath, 'utf8', function (err, data) {
-			if (err) {
-				die(panickMsg, err);
-			}
-			let obj = JSON.parse(data);
-			for (let prop in obj) {
-				package[prop] = obj[prop];
-			}
-			callback();
-		});
-	} else {
-		callback();
+function loadPackage() {
+	let obj = loadJsonFile(packageJsonPath) || {};
+
+	for (let prop in obj) {
+		package[prop] = obj[prop];
 	}
 }
 
-function loadAuthTokens(callback) {
-	if (fs.existsSync(authTokenStore)) {
-		fs.readFile(authTokenStore, 'utf8', function (err, data) {
-			if (err) {
-				die(panickMsg, err);
-			}
-			authTokens = JSON.parse(data);
-			callback();
-		});
-	} else {
-		callback();
-	}
+function loadAuthTokens() {
+	authTokens = loadJsonFile(authTokenStore) || {};
+}
+
+function getStoredRequiredReading() {
+	return loadJsonFile(requiredReadingStore) || {
+		updated: 0,
+		library: {},
+		completed: false
+	};
 }
 
 function shouldIgnore(str) {
 	let ignore = false;
+
 	for (let ignoreGlob of ignoreGlobs) {
 		if (ignoreGlob.match(str)) {
 			ignore = !ignoreGlob.negate;
@@ -4299,9 +4582,13 @@ function loadIgnores(callback) {
 	if (ignoresLoaded) {
 		callback();
 	}
+	for (let ignoreGlob of defaultIgnores) {
+		ignoreGlobs.push(new Minimatch(ignoreGlob));
+	}
 	let i = 0;
 	let loadNext = () => {
 		let ignorePath = ignoresPaths[i++];
+
 		if (ignorePath === undefined) {
 			callback();
 			return;
@@ -4311,17 +4598,14 @@ function loadIgnores(callback) {
 				if (err) {
 					die(panickMsg, err);
 				}
-				let _ignores = data.split('\r\n').join('\n').split('\n');
-				ignores.push(..._ignores);
+				let ignores = data.split('\r\n').join('\n').split('\n');
 
-				let _ignoreGlobs = [];
-				for (let ignoreGlob of _ignores) {
+				for (let ignoreGlob of ignores) {
 					if (ignoreGlob.length === 0) {
 						continue;
 					}
-					_ignoreGlobs.push(new Minimatch(ignoreGlob, { flipNegate: true }));
+					ignoreGlobs.push(new Minimatch(ignoreGlob, { flipNegate: true }));
 				}
-				ignoreGlobs.push(..._ignoreGlobs);
 				loadNext();
 			});
 		} else {
@@ -4347,6 +4631,7 @@ function mksubdirSync(dirPath) {
 
 function storeAuthTokens() {
 	let json = JSON.stringify(authTokens, undefined, 2);
+	mksubdirSync(authTokenStore);
 	fs.writeFileSync(authTokenStore, json, 'utf8');
 }
 
@@ -4358,12 +4643,8 @@ function storePackage(pk = package, file = packageJsonPath) {
 
 function storeAppConfig() {
 	let json = JSON.stringify(appConfig, undefined, 2);
+	mksubdirSync(appDataConfigPath);
 	fs.writeFileSync(appDataConfigPath, json, 'utf8');
-}
-
-function storePackageConfig() {
-	let json = JSON.stringify(packageConfig, undefined, 2);
-	fs.writeFileSync(packageConfigPath, json, 'utf8');
 }
 
 function addPackageBaseModules(checkExists = false) {
@@ -4390,7 +4671,7 @@ function onPackageInstalled(packageId, dir) {
 		let localDir = getInstallDirFromInstallId(packageId).substr(rDir.length + 1) + '/';
 		let indexJS = path.resolve(dir, `${localDir}bjspm/index.js`);
 		let indexTS = path.resolve(dir, `${localDir}bjspm/index.ts`);
-		let moduleStr = getPackageBaseModuleString('/bjspm/' + localDir).replace(/\\/g, '/');
+		let moduleStr = getPackageBaseModuleString('/bjspm/packages/' + localDir).replace(/\\/g, '/');
 
 		if (existsAsFile(indexJS)) {
 			fs.writeFileSync(indexJS, moduleStr, 'utf8');
@@ -4435,21 +4716,26 @@ function getAuthToken(username, callback, useAuthStore = true) {
 				getAuthToken(username, callback);
 				return;
 			}
-			apiPost({
-				action: 'GET_USER_AUTH_TOKEN',
-				username: username,
-				password: password
-			}, (obj) => {
-				switch (obj.status) {
-					case API_STATUS.OK:
-						authTokens[username] = obj.authToken;
-						storeAuthTokens();
-						callback(obj.authToken);
-						break;
-					case API_STATUS.ERR:
-						die('Server error: ' + obj.error);
-						break;
-				}
+			getSolvedChallenge((challenge) => {
+				delete challenge.hash;
+
+				apiPost({
+					action: 'GET_USER_AUTH_TOKEN',
+					username: username,
+					password: password,
+					challenge: challenge
+				}, (obj) => {
+					switch (obj.status) {
+						case API_STATUS.OK:
+							authTokens[username] = obj.authToken;
+							storeAuthTokens();
+							callback(obj.authToken);
+							break;
+						case API_STATUS.ERR:
+							die('Server error: ' + obj.error);
+							break;
+					}
+				});
 			});
 		});
 		sysout.muted = true;
@@ -4516,6 +4802,7 @@ Press ^C at any time to quit.
 				}
 				askQuestion();
 			});
+			return;
 		}
 
 		// Package version
@@ -4537,6 +4824,7 @@ Press ^C at any time to quit.
 				}
 				askQuestion();
 			});
+			return;
 		}
 
 		// Package description
@@ -4559,6 +4847,7 @@ Press ^C at any time to quit.
 				log();
 				askQuestion();
 			});
+			return;
 		}
 
 		// Package keywords
@@ -4576,6 +4865,7 @@ Press ^C at any time to quit.
 				log();
 				askQuestion();
 			});
+			return;
 		}
 
 		// Package license
@@ -4600,22 +4890,39 @@ Press ^C at any time to quit.
 				log();
 				askQuestion();
 			});
+			return;
 		}
 
 		// Package username
 		if (!usernameSet) {
 			let defaultUsername = package.username || suggestPackage.username;
-			let hasDefault = defaultUsername.length !== 0 && isValidUsername(defaultUsername);
+			let hasDefault = defaultUsername.length !== 0 && isValidPackageUsername(defaultUsername);
 
 			readline.question(`your croncle.com username: ${hasDefault ? `(${defaultUsername}) ` : ''}`, (username) => {
 				if (hasDefault && username.length === 0) {
 					newPackage.username = defaultUsername;
 					usernameSet = true;
-					writePackage(newPackage);
+
+					if (package.sid.length !== 0 && getPackageTypeFromSid(package.sid) === 'user') {
+						let matches = package.sid.match(regexInstallUser);
+						let user = matches[1];
+						let packageName = matches[2];
+
+						if (newPackage.username === user && newPackage.name !== packageName && newPackage.name.toLowerCase() === packageName.toLowerCase()) {
+							usernameSet = false;
+							packageNameSet = false;
+
+							log(`User package names must have the same character case; cannot have both "${user}/${packageName}" and "${user}/${newPackage.name}".\n`);
+							askQuestion();
+						} else {
+							writePackage(newPackage);
+						}
+					} else {
+						writePackage(newPackage);
+					}
 				} else {
 					if (isValidUsername(username) || username.length === 0) {
-						newPackage.username = username;
-						usernameSet = true;
+						newPackage.username = username.toLowerCase();
 						writePackage(newPackage);
 					} else {
 						log('Invalid username\n');
@@ -4623,7 +4930,9 @@ Press ^C at any time to quit.
 					}
 				}
 			});
+			return;
 		}
+		writePackage(newPackage);
 	}
 	askQuestion();
 }
@@ -4655,6 +4964,7 @@ bjspm install <user>/<pkg>
 bjspm install <user>/<pkg>@<tag>
 bjspm install <user>/<pkg>@<version>
 bjspm install <user>/<pkg><version-major>
+bjspm install <user>/<pkg><version-major>@<tag>
 bjspm install <user>/<pkg>@<version range>
 
 Options:
@@ -4748,7 +5058,8 @@ bjspm push description [<new description>]`);
 		case 'dist-tags':
 		case 'dist-tag': {
 			_log(`
-bjspm dist-tag add <user>/<pkg>@<version> [<tag>]
+bjspm dist-tag add <tag>
+bjspm dist-tag add <user>/<pkg>@<version> <tag>
 bjspm dist-tag rm <user>/<pkg> <tag>
 bjspm dist-tag ls [<user>/<pkg>]
 
@@ -4759,7 +5070,6 @@ alias: dist-tags`);
 		case 'access': {
 			_log(`
 bjspm access public [<package>]
-bjspm access restricted [<package>]
 bjspm access grant <read-only|read-write> <user> [<package>]
 bjspm access revoke <user> [<package>]
 bjspm access ls-packages [<user>]
@@ -4795,13 +5105,9 @@ aliases: list, la, ll`);
 			_log(`
 bjspm auth store [<user>]
 bjspm auth forget [<user>]
-bjspm auth sign-in [<user>]
-bjspm auth sign-out
-bjspm auth ls
-
-Options:
- --json
- --depth`);
+bjspm auth login [<user>] [--force]
+bjspm auth logout
+bjspm auth ls`);
 		}
 			break;
 		// view
