@@ -1,4 +1,4 @@
 # BJSPM
-Babylon.js Package Manager
+A Babylon.js Package Manager
 
-[Documentation](https://dev-bjspm.croncle.com/documentation/)
+[Documentation](https://bjspm.croncle.com/documentation/)

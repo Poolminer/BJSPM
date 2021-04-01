@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const version = '1.1.0';
+const version = '1.1.3';
 const fs = require('fs');
 const crypto = require('crypto');
 const archiver = require('archiver');
@@ -4529,15 +4529,18 @@ function loadJsonFile(jsonPath, callback, maxSize = 10485760) {
 	}
 }
 
-function loadAppConfig(callback) {
-	let _appConfig = appConfig; // Default app config
-	appConfig = loadJsonFile(appDataConfigPath);
+function loadAppConfig() {
+	let storedAppConfig = loadJsonFile(appDataConfigPath);
 
-	for (let key in _appConfig) {
-		if (!(key in appConfig)) {
-			appConfig[key] = _appConfig[key];
+	if(storedAppConfig === null){
+		return;
+	}
+	for (let key in appConfig) {
+		if (!(key in storedAppConfig)) {
+			storedAppConfig[key] = appConfig[key];
 		}
 	}
+	appConfig = storedAppConfig;
 }
 
 function cleanAppConfig() {

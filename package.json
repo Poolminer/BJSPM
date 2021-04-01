@@ -1,6 +1,6 @@
 {
   "name": "bjspm",
-  "version": "1.1.0",
+  "version": "1.1.3",
   "description": "A Babylon.js Package Manager",
   "main": "index.js",
   "scripts": {
@@ -25,7 +25,7 @@
   "bugs": {
     "url": "https://github.com/Poolminer/BJSPM/issues"
   },
-  "homepage": "https://bjspm.croncle.com/",
+  "homepage": "https://bjspm.croncle.com",
   "dependencies": {
     "appdata-path": "^1.0.0",
     "archiver": "^3.1.1",
