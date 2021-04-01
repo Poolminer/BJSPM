@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const version = '1.1.3';
+const version = '1.1.5';
 const fs = require('fs');
 const crypto = require('crypto');
 const archiver = require('archiver');
